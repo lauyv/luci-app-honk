@@ -1,0 +1,65 @@
+name: Release
+run-name: Release ${{ inputs.tag }}
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'New version, e.g. v0.1.0'
+        required: true
+        type: string
+      prerelease:
+        description: 'Publish as prerelease'
+        default: false
+        type: boolean
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      TOOLS_DIR: ${{ github.workspace }}/build/tools
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate version
+        run: bash .github/scripts/build-apk.sh --metadata
+      - name: Test
+        run: |
+          for script in .github/scripts/*.sh; do bash -n "$script"; done
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          node --check htdocs/luci-static/resources/view/honk/panel.js
+          python3 tests/preview/build.py
+          BROWSER_BIN="$(command -v google-chrome || command -v chromium)" node tests/browser.mjs
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends binutils fakeroot build-essential meson ninja-build pkg-config libssl-dev zlib1g-dev
+          bash .github/scripts/prepare-tools.sh
+      - name: Package
+        run: bash .github/scripts/build-apk.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          BUILD_SHA: ${{ github.sha }}
+          NOTES_FILE: ${{ runner.temp }}/honk-release-notes.md
+        run: |
+          bash .github/scripts/release-notes.sh
+          flags=()
+          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          metadata=$(bash .github/scripts/build-apk.sh --metadata)
+          version=${metadata%%$'\n'*}
+          gh release create "$RELEASE_TAG" \
+            "dist/luci-app-honk-$version.apk" \
+            --target "$BUILD_SHA" --title "$RELEASE_TAG" --notes-file "$NOTES_FILE" "${flags[@]}"

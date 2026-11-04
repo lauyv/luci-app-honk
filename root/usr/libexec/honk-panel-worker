@@ -1,0 +1,9 @@
+#!/bin/sh
+# shellcheck shell=busybox
+# shellcheck disable=SC1091
+. /usr/share/libubox/jshn.sh
+. /usr/share/honk-panel/common.sh
+. /usr/share/honk-panel/download.sh
+. /usr/share/honk-panel/geo.sh
+prepare || exit 1
+worker "$1" "${2:-}" "${3:-}"

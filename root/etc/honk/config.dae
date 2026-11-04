@@ -1,0 +1,70 @@
+global {
+  bootstrap_resolver: '119.29.29.29:53'
+  check_interval: 300s
+  check_tolerance: 10ms
+  data_dir: '/etc/honk'
+  dial_mode: domain++
+  log_level: error
+  tcp_check_url: 'http://cp.cloudflare.com/generate_204'
+  udp_check_dns: '8.8.8.8'
+  wan_interface: auto
+  lan_interface: br-lan
+}
+
+group {
+  proxy {
+    filter: group(avg_hk)
+    filter: name(regex: '(?i)hk|tw|jp|港|台|日')
+    policy: select
+  }
+  avg_hk {
+    filter: name(keyword: 'HK')
+    policy: min_moving_avg
+  }
+}
+
+subscription {
+  kfc: 'https://www.example.com/subscription/link' { route: direct }
+}
+
+dns {
+  optimistic_cache: true
+  upstream {
+    localdns: 'udp://119.29.29.29' -> direct
+    remotedns: 'udp://8.8.8.8' -> proxy
+    encryptdns: 'tls://223.5.5.5' -> direct
+  }
+  routing {
+    request {
+      qname(geosite:reject) -> reject
+      qname(geosite:loc-cn) -> localdns
+      qname(geosite:loc-!cn) -> remotedns
+      fallback: encryptdns
+    }
+  }
+}
+
+routing {
+  mac('00:00:00:00:00:00') && !dport(53) -> direct(must)
+  dscp(0x4) -> direct
+  domain(geosite:reject) -> block
+  domain(geosite:loc-cn) -> direct
+  domain(geosite:loc-!cn) -> proxy
+  dip(geoip:cn) -> direct
+  dip(geoip:lan) -> direct
+  fallback: proxy
+}
+
+experimental {
+    native_api {
+        enabled: true
+        config_write: true
+        listen: '0.0.0.0:9527'
+        secret: 'replace-with-your-random-token'
+        allow_anonymous_loopback: true
+        ui: 'embedded'
+    }
+    cache_file {
+        enabled: true
+    }
+}

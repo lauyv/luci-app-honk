@@ -1,0 +1,11 @@
+{
+  "luci-app-honk": {
+    "description": "管理 honk 配置、服务与核心",
+    "read": {
+      "ubus": { "luci.honk": ["status", "read", "logs"] }
+    },
+    "write": {
+      "ubus": { "luci.honk": ["geo", "check", "save", "action", "autostart", "preferences"] }
+    }
+  }
+}
