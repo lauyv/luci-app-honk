@@ -45,7 +45,7 @@ dns {
 }
 
 routing {
-  mac('00:00:00:00:00:00') && !dport(53) -> direct(must)
+  mac('aa:bb:cc:dd:ee:ff') && !dport(53) -> direct(must)
   dscp(0x4) -> direct
   domain(geosite:reject) -> block
   domain(geosite:loc-cn) -> direct
@@ -58,7 +58,6 @@ routing {
 experimental {
     native_api {
         enabled: true
-        config_write: true
         listen: '0.0.0.0:9527'
         secret: 'replace-with-your-random-token'
         allow_anonymous_loopback: true
