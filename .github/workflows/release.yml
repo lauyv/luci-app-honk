@@ -1,14 +1,9 @@
 name: Release
-run-name: Package honk ${{ inputs.core_tag || 'upstream update' }}
+run-name: Package latest upstream honk
 on:
   schedule:
     - cron: '17 1 * * *'
   workflow_dispatch:
-    inputs:
-      core_tag:
-        description: 'Optional honk version tag; empty selects the newest versioned release (including prereleases)'
-        required: false
-        type: string
 permissions:
   contents: write
 concurrency:
@@ -29,10 +24,8 @@ jobs:
           fetch-depth: 0
       - name: Check upstream release
         id: upstream
-        env:
-          REQUESTED_TAG: ${{ inputs.core_tag }}
         run: |
-          bash .github/scripts/resolve-release.sh "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+          bash .github/scripts/resolve-release.sh >> "$GITHUB_OUTPUT"
       - name: Release summary
         env:
           CORE_TAG: ${{ steps.upstream.outputs.tag }}

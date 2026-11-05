@@ -43,7 +43,7 @@ sysupgrade 保留整个 `/etc/honk/` 目录，包括配置、Geo 文件和状态
 
 ## 自动发布
 
-GitHub Actions 的 **Release** 工作流每天 UTC 01:17（北京时间 09:17）检查上游最新发布；GitHub 定时任务可能延迟。筛选版本标签，包含 alpha/beta/rc，排除 Debug 构建。核心版本已发布到本仓库时跳过；否则下载官方静态 musl full 核心，校验 GitHub API 摘要、`SHA256SUMS`、ELF 架构和静态链接属性，再构建、发布 APK。工作流也可手动运行：`core_tag` 留空选择最新版本，或填写指定上游版本。
+GitHub Actions 的 **Release** 工作流每天 UTC 01:17（北京时间 09:17）检查上游最新发布；GitHub 定时任务可能延迟。筛选版本标签，包含 alpha/beta/rc，排除 Debug 构建。核心版本已发布到本仓库时跳过；否则下载官方静态 musl full 核心，校验 GitHub API 摘要、`SHA256SUMS`、ELF 架构和静态链接属性，再构建、发布 APK。手动运行工作流也会自动选择最新上游版本，无需填写参数。
 
 发布标签跟随核心标签，预发布标记跟随上游。APK 版本按 OpenWrt 规则转换，如 `v0.1.0-beta.4` → `0.1.0_beta4-r1`；修订号取自 Makefile 的 `PKG_RELEASE`。相同核心版本不会重复发布；需要重新打包时，删除该版本的本仓库 Release 和标签后手动运行。发布说明包含自上次发布以来的完整 commit message 和上游版本链接。
 
