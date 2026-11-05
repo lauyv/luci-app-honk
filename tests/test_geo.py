@@ -45,7 +45,6 @@ assert_old_files() {
     cmp "$GEOROOT/geosite.dat" "$FIXTURE/old-site"
     cmp "$GEOROOT/geoip.dat" "$FIXTURE/old-ip"
 }
-check_config() { return 0; }
 cp "$FIXTURE/request.json" "$RUN/geo-request.json"
 '''
 
@@ -196,7 +195,6 @@ cmp "$GEOROOT/geosite.dat" "$FIXTURE/old-site"
         self.run_geo(r'''
 old_files
 touch "$FIXTURE/running" "$FIXTURE/stop-failure"
-check_config() { return 0; }
 if apply_geo; then exit 1; fi
 [ "$ERROR" = stop_failed ]
 assert_old_files

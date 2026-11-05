@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>honk · LuCI 交互预览</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f4f6f9;color:#263445;font:14px/1.6 system-ui,-apple-system,sans-serif}header{background:#192b3f;color:white;padding:16px 28px;font-size:18px}header small{font-size:12px;color:#bdcddd;margin-left:18px}.layout{max-width:1120px;margin:26px auto;padding:0 20px}.preview-note{border:1px solid #bfd7ed;background:#edf6ff;border-radius:6px;padding:12px 16px;margin-bottom:18px}.preview-tools{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;align-items:center}.cbi-map{background:white;border:1px solid #dee4ec;border-radius:8px;box-shadow:0 3px 12px #192b3f08;padding:24px}h2{margin:0;font-size:23px}.cbi-map-descr,.cbi-section-descr{color:#64748b}.cbi-value{display:flex;border-bottom:1px solid #eef1f5;padding:15px 4px;align-items:center;gap:20px}.cbi-value-title{width:140px;flex-shrink:0;font-weight:500}.cbi-value-field{flex:1}.cbi-value-description{font-size:12px;color:#718096}.cbi-input-textarea{border:1px solid #cbd5e1;border-radius:5px;padding:12px;line-height:1.6;font-size:13px;background:#fbfcfe}.cbi-input-text{border:1px solid #cbd5e1;border-radius:4px;padding:8px;min-width:250px}button{font:inherit;cursor:pointer}.cbi-button,.tab-button{border:1px solid #ccd5df;background:white;border-radius:4px;padding:6px 16px;color:#34465b}.cbi-button:hover{background:#f1f5f9}.cbi-button-apply{background:#2879d0;color:white;border-color:#2879d0}.cbi-button-apply:hover{background:#2268b3}.cbi-button-negative{color:#c24646;border-color:#e4b9b9}button:disabled{opacity:.45;cursor:not-allowed}.cbi-page-actions{margin-top:16px}.cbi-checkbox{display:flex;align-items:center;gap:8px}.cbi-checkbox input{appearance:none;width:38px;height:22px;background:#a8b5c5;border-radius:20px;position:relative;cursor:pointer;margin:0}.cbi-checkbox input:before{content:'';width:16px;height:16px;position:absolute;left:3px;top:3px;border-radius:50%;background:white;transition:transform .15s}.cbi-checkbox input:checked{background:#2879d0}.cbi-checkbox input:checked:before{transform:translateX(16px)}.cbi-checkbox input:disabled{opacity:.45;cursor:default}.tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #dbe2eb;margin:24px 0 18px}.tab-button{border:0;border-radius:0;padding:10px 22px}.tab-button.active{color:#2879d0;border-bottom:3px solid #2879d0;font-weight:600}.notification{padding:12px 18px;border-radius:6px;background:#ecf8ef;border:1px solid #b5dabe;margin:12px 0}.notification.error{background:#fff1f0;border-color:#ecc1ba;color:#9f3030}.notification p{margin:0}code{background:#f2f5f8;padding:2px 5px;border-radius:3px}#preview-errors{color:#b22}@media(max-width:600px){header small{display:block;margin:4px 0 0}.layout{padding:0 10px;margin-top:12px}.cbi-map{padding:16px}.cbi-value{gap:12px}.cbi-value-title{width:88px}.cbi-input-text{min-width:180px;width:100%}.tab-button{padding:9px 16px}}
-{{PANEL_CSS}}</style><header>LuCI <small>服务 / honk · 本地交互预览</small></header><div class="layout"><div class="preview-note"><strong>本地预览：版本查询读取官方 GitHub，其余操作为模拟，不连接路由器。</strong>选择预览架构后，在核心管理点击“检查版本”。安装、配置校验和服务操作仅用于体验交互。<div class="preview-tools"><label>预览架构 <select id="preview-target"><option value="aarch64-unknown-linux-musl">ARM64 / R5S</option><option value="x86_64-unknown-linux-musl">x86_64</option></select></label><label><input type="checkbox" id="simulate-failure"> 模拟启动失败</label><button class="cbi-button" id="external-change">模拟外部修改配置</button><span>初始状态：尚未安装核心，开机启动关闭</span></div></div><div id="notifications"></div><div id="app"></div><pre id="preview-errors"></pre></div><script>
+{{PANEL_CSS}}</style><header>LuCI <small>服务 / honk · 本地交互预览</small></header><div class="layout"><div class="preview-note"><strong>本地预览：版本查询读取官方 GitHub，其余操作为模拟，不连接路由器。</strong>选择预览架构后，在核心管理点击“检查版本”。安装、配置保存和服务操作仅用于体验交互。<div class="preview-tools"><label>预览架构 <select id="preview-target"><option value="aarch64-unknown-linux-musl">ARM64 / R5S</option><option value="x86_64-unknown-linux-musl">x86_64</option></select></label><label><input type="checkbox" id="simulate-failure"> 模拟启动失败</label><button class="cbi-button" id="external-change">模拟外部修改配置</button><span>初始状态：尚未安装核心，开机启动关闭</span></div></div><div id="notifications"></div><div id="app"></div><pre id="preview-errors"></pre></div><script>
 window.addEventListener('error',event=>document.getElementById('preview-errors').textContent=event.message);
 function E(tag, attrs, children) {
  if (typeof attrs === 'string' || Array.isArray(attrs) || attrs instanceof Node) { children=attrs;attrs={}; }
@@ -18,16 +18,11 @@ const state={running:false,autostart:false,pid:'2386',version:'',config:'/etc/ho
  geosite_url:'https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat',geoip_url:'https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat',geo_downloaded:false,core_installed:false,rollback_available:false,target:'aarch64-unknown-linux-musl',releases:'',proxy_prefix:'https://gh-proxy.com',environment:'Linux 6.12 · BTF / cgroup v2 可用'};
 let sequence=1,jobSequence=0,previousVersion='';
 const snapshot=()=>({...state});
-function validate(content){
- const text=content.replace(/#[^\n]*/g,'');
- let depth=0;for(const c of text){if(c==='{')depth++;if(c==='}')depth--;if(depth<0)return '模拟：花括号不匹配';}
- return depth!==0 || !text.includes('global') || text.includes('INVALID') ? '模拟：配置无效，请保留 global 配置节并检查花括号' : '';
-}
 function enqueue(action,work){
  if(state.busy)return {ok:false,code:'operation_busy'};
  const id='preview-job-'+(++jobSequence);
  state.busy=true;document.getElementById('preview-target').disabled=true;state.job=JSON.stringify({id,state:'running',code:'operation_running',argument:action});
- setTimeout(async()=>{let result;try{result=await work();}catch(error){result={state:'error',code:error.code||'check_failed',details:error.message};}state.busy=false;document.getElementById('preview-target').disabled=false;state.job=JSON.stringify({id,state:'success',...result});window.previewPanel.refresh();},700);
+ setTimeout(async()=>{let result;try{result=await work();}catch(error){result={state:'error',code:error.code||'operation_failed',details:error.message};}state.busy=false;document.getElementById('preview-target').disabled=false;state.job=JSON.stringify({id,state:'success',...result});window.previewPanel.refresh();},700);
  return {ok:true,id,code:'operation_queued'};
 }
 async function fetchVersions(target){
@@ -72,13 +67,10 @@ const rpc={declare:({method})=>async(...args)=>{
   state.geosite_url=site;state.geoip_url=ip;state.geo_downloaded=true;
   return {code:'geo_applied'};
  });
- if(method==='check')return enqueue('validate',()=>{if(!state.core_installed)return {state:'error',code:'core_missing'};const error=validate(args[0]);return error?{state:'error',code:'check_failed',argument:'1',details:error}:{code:'check_passed'};});
  if(method==='save'){
   if(args[1]!==state.revision)return {ok:false,code:'config_changed'};
   return enqueue('save',()=>{
-   if(!state.core_installed)return {state:'error',code:'core_missing'};
    if(args[1]!==state.revision)return {state:'error',code:'config_changed'};
-   const error=validate(args[0]);if(error)return {state:'error',code:'check_failed',argument:'1',details:error};
    if(args[0]===state.content)return {code:'config_unchanged',revision:state.revision};
    state.content=args[0];state.revision='preview-'+(++sequence);
    if(state.running && document.getElementById('simulate-failure').checked){state.running=false;return {state:'error',code:'apply_failed',revision:state.revision,details:'模拟：新配置已保存，但进程未能稳定启动。'};}
@@ -93,7 +85,7 @@ const rpc={declare:({method})=>async(...args)=>{
    previousVersion=state.version;state.rollback_available=!!previousVersion;state.version='honk-core '+args[1];state.core_installed=true;return {code:'core_installed'};
   }
   if(action==='rollback'){const current=state.version;state.version=previousVersion;previousVersion=current;return {code:'core_rolled_back'};}
-  if(action==='start'){if(!state.core_installed)return {state:'error',code:'core_missing'};const error=validate(state.content);if(error)return {state:'error',code:'check_failed',details:error,argument:'1'};}
+  if(action==='start' && !state.core_installed)return {state:'error',code:'core_missing'};
   state.running=action==='start';return {code:state.running?'service_running':'service_stopped'};
  });
  return {ok:false,code:'method_unknown'};

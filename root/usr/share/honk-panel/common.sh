@@ -84,7 +84,7 @@ recover_job() {
 		json_get_var JOB_ID id
 		case "$state" in queued|running) job error operation_interrupted;; esac
 	fi
-	rm -f "$RUN/check.log" "$RUN/service.log" "$RUN/validation.conf" "$RUN/geo-request.json"
+	rm -f "$RUN/service.log" "$RUN/save.conf" "$RUN/geo-request.json"
 }
 
 job() {
@@ -198,31 +198,9 @@ stop_service() {
 	done
 }
 
-check_config() {
-	local file="$1" binary="${2:-$BIN}" nonce result
-	ERROR_ARG=''
-	[ -x "$binary" ] || { ERROR=core_missing; return 1; }
-	[ -f "$file" ] || { ERROR=config_missing; return 1; }
-	[ "$(wc -c < "$file")" -le "$MAX_SIZE" ] || { ERROR=config_too_large; return 1; }
-	# beta.5 has no check command. Its read-only delay subcommand calls
-	# Config::validate before node lookup. A fresh absent node gives an exact
-	# sentinel error after validation, without running the engine. Loopback
-	# port zero prevents external dialing even if a future build changes lookup.
-	nonce="__luci_validate_$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
-	result=0
-	run_timeout 20 "$binary" --config "$file" delay "$nonce" --url 127.0.0.1:0 > "$RUN/check.log" 2>&1 || result=$?
-	if [ "$result" = 1 ] && grep -qxF "Error: Node '$nonce' not found in configuration" "$RUN/check.log"; then
-		DETAILS=''; return 0
-	fi
-	DETAILS=$(head -c 8192 "$RUN/check.log")
-	ERROR=check_failed
-	ERROR_ARG="$result"
-	return 1
-}
-
 config_revision() {
 	# Includes are read by honk relative to the entry directory. Track all dae
-	# files here too so external edits during validation invalidate the save.
+	# files here too so external edits during staging invalidate the save.
 	{ printf '%s\n' "$CONFIG"; if [ -f "$CONFIG" ]; then sha256sum "$CONFIG"; else printf 'missing\n'; fi
 	  find /etc/honk -type f -name '*.dae' -exec sha256sum '{}' \; | sort; } |
 		sha256sum | cut -d ' ' -f 1
@@ -253,11 +231,7 @@ save_config() {
 	# Keep the candidate beside the destination for an atomic rename. The worker
 	# owns this path until commit and removes it on failure or interruption.
 	SAVE_CANDIDATE=$(stage_config "$content") || { ERROR=config_save_failed; return 1; }
-	if ! check_config "$SAVE_CANDIDATE"; then
-		rm -f "$SAVE_CANDIDATE"; SAVE_CANDIDATE=''
-		return 1
-	fi
-	# SSH and UCI edits do not take the panel lock. Recheck after validation.
+	# SSH and UCI edits do not take the panel lock. Recheck after staging.
 	if ! settings || [ "$CONFIG" != "$original_config" ] ||
 		[ "$SERVICE_USER" != "$original_user" ] ||
 		[ "$expected" != "$(config_revision)" ]; then
@@ -283,7 +257,6 @@ save_config() {
 }
 
 start_service() {
-	check_config "$CONFIG" || return 1
 	run_service "$1" "$2"
 }
 
@@ -314,16 +287,8 @@ worker() {
 	job running operation_running '' "$action"
 	case "$action" in check_updates|install|rollback|geo) ;; *) action_settings "$action" || { job error "$ERROR"; return 1; };; esac
 	case "$action" in
-		validate)
-			content=$(cat "$RUN/validation.conf"; printf '.')
-			content=${content%.}
-			# Keep the entry directory identical to save/start for relative includes.
-			SAVE_CANDIDATE=$(stage_config "$content") || { job error check_prepare_failed; return 1; }
-			check_config "$SAVE_CANDIDATE" || { job error "$ERROR" "$DETAILS"; return 1; }
-			rm -f "$SAVE_CANDIDATE"; SAVE_CANDIDATE=''
-			job success check_passed "$DETAILS";;
 		save)
-			content=$(cat "$RUN/validation.conf"; printf '.')
+			content=$(cat "$RUN/save.conf"; printf '.')
 			content=${content%.}
 			save_config "$content" "$expected" || { job error "$ERROR" "$DETAILS"; return 1; }
 			job success "$SAVE_CODE";;
@@ -353,6 +318,6 @@ worker_exit() {
 	if [ -n "${GEO_STAGE:-}" ] && [ "${GEO_KEEP:-0}" != 1 ]; then rm -rf "$GEO_STAGE"; fi
 	[ -z "${CORE_STAGE:-}" ] || rm -rf "$CORE_STAGE"
 	[ -z "${SAVE_CANDIDATE:-}" ] || rm -f "$SAVE_CANDIDATE"
-	rm -f "$RUN/check.log" "$RUN/service.log" "$RUN/validation.conf" "$RUN/geo-request.json"
+	rm -f "$RUN/service.log" "$RUN/save.conf" "$RUN/geo-request.json"
 	unlock
 }

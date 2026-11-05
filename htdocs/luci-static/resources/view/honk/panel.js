@@ -20,7 +20,6 @@ const api = {
   read: method('read'),
   logs: method('logs'),
   save: method('save', ['content', 'revision']),
-  check: method('check', ['content']),
   action: method('action', ['name', 'revision']),
   autostart: method('autostart', ['enabled']),
   geo: method('geo', ['geosite_url', 'geoip_url']),
@@ -36,10 +35,7 @@ const messages = {
   service_missing: '缺少 honk 可执行文件或启动脚本',
   config_missing: '没有已保存的配置',
   config_too_large: '配置大小超过 64 KiB',
-  check_failed: '配置校验失败（退出码 %s）',
-  check_prepare_failed: '无法准备临时校验文件',
   operation_running: '正在执行：%s',
-  check_passed: '配置文件通过 honk 校验',
   config_applied: '配置已应用，服务 PID 保持稳定。未测试网络连通性。',
   start_failed: '服务未能稳定启动，请检查日志',
   service_running: '服务正在运行',
@@ -98,7 +94,6 @@ const messages = {
 };
 
 const actions = {
-  validate: '校验',
   save: '保存配置',
   start: '启动',
   stop: '停止',
@@ -434,7 +429,7 @@ return view.extend({
     const config = E('div', { 'data-tab': 'config', 'data-tab-title': '配置' }, [
       this.dirty,
       this.editor,
-      E('p', { class: 'cbi-section-descr' }, '保存前校验；运行中的服务会重启，已停止的服务保持停止。'),
+      E('p', { class: 'cbi-section-descr' }, '运行中的服务会重启，已停止的服务保持停止。'),
       E('div', { class: 'cbi-page-actions honk-actions' }, [
         this.button(
           '重载配置',
@@ -445,17 +440,6 @@ return view.extend({
           },
           'reset',
           false,
-        ),
-        this.button(
-          '校验',
-          async () => {
-            checked(await api.check(this.content()));
-            this.status.busy = true;
-            this.lastJob = null;
-          },
-          'action',
-          true,
-          true,
         ),
         this.button('保存', () => this.save(), 'apply', true, true),
       ]),

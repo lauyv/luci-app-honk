@@ -158,11 +158,12 @@ try {
   assert.ok((await evaluate('document.getElementById("notifications").innerText')).includes('旧核心'));
   await evaluate('document.querySelectorAll(".tab-button")[1].click(); previewPanel.editor.value="INVALID"; [...document.querySelectorAll("button")].find(n=>n.textContent==="保存").click()'); await idle();
   assert.equal(await evaluate('previewPanel.editor.value'), 'INVALID');
-  assert.ok((await evaluate('previewPanel.savedText')).includes('global'));
-  await evaluate('previewPanel.editor.value=previewPanel.savedText + "\\n# preview edit\\n"; [...document.querySelectorAll("button")].find(n=>n.textContent==="保存").click()'); await idle();
+  assert.equal(await evaluate('previewPanel.savedText'), 'INVALID');
+  assert.equal(await evaluate('[...document.querySelectorAll("button")].some(n=>n.textContent==="校验")'), false);
+  await evaluate('document.getElementById("simulate-failure").checked=false; previewPanel.editor.value=previewPanel.savedText + "\\n# preview edit\\n"; [...document.querySelectorAll("button")].find(n=>n.textContent==="保存").click()'); await idle();
   assert.equal(await evaluate('previewPanel.editor.value===previewPanel.savedText'), true);
   assert.equal(await evaluate('previewPanel.running.checked'), false);
-  assert.ok((await evaluate('document.getElementById("notifications").innerText')).includes('配置已保存'));
+  assert.ok((await evaluate('document.getElementById("notifications").innerText')).includes('配置文件已保存'));
   await evaluate('document.getElementById("external-change").click(); [...document.querySelectorAll("button")].find(n=>n.textContent==="保存").click()'); await idle();
   assert.ok((await evaluate('document.getElementById("notifications").innerText')).includes('配置文件已改变'));
   await evaluate('document.querySelectorAll(".tab-button")[2].click()');

@@ -1,2 +1,1 @@
-/etc/honk/
-/usr/libexec/honk/
+/etc/honk/*.dae

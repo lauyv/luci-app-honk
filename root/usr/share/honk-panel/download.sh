@@ -148,18 +148,13 @@ prepare_core_dir() {
 }
 
 # Install and rollback use the same locked transaction. The old core is kept
-# intact until the candidate has validated the existing configuration.
+# intact for recovery if the new core fails to start.
 activate_core() {
 	local candidate="$1" pid was_running=0 prior=0 failed_details
 	settings || return 1
 	service_snapshot || return 1
 	pid="$SERVICE_PID"
 	if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then was_running=1; fi
-	# First installation stays stopped and must allow fixing an invalid config
-	# afterwards. Existing cores are replaced only after config validation.
-	if [ -x "$BIN" ] || [ "$was_running" = 1 ]; then
-		check_config "$CONFIG" "$candidate" || return 1
-	fi
 	[ ! -f "$BIN" ] || { cp -p "$BIN" "$CORE_STAGE/prior" || { ERROR=core_write_failed; return 1; }; prior=1; }
 	if [ "$was_running" = 1 ]; then stop_service || return 1; fi
 	# Make the backup durable before publishing the new executable.
@@ -205,7 +200,7 @@ install_core() {
 	[ "$version_tag" = "$tag" ] || {
 		ERROR=version_mismatch; return 1;
 	}
-	job running operation_running '校验现有配置并安装；运行中的服务会短暂中断' install
+	job running operation_running '安装核心；运行中的服务会短暂中断' install
 	activate_core "$CORE_STAGE/candidate"
 }
 

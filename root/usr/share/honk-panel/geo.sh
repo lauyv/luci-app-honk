@@ -107,7 +107,7 @@ geo_replace_files() {
 }
 
 apply_geo() {
-	local site_url ip_url old_site old_ip old_updated signature data_signature config_signature
+	local site_url ip_url old_site old_ip old_updated signature data_signature
 	local name source_url was_running=0 failure original_error settings_changed=0
 	load_json_file "$RUN/geo-request.json" || { ERROR=request_invalid; return 1; }
 	json_get_var site_url geosite_url
@@ -139,9 +139,6 @@ apply_geo() {
 	if [ -n "$SERVICE_PID" ] && kill -0 "$SERVICE_PID" 2>/dev/null; then was_running=1; fi
 	if [ "$was_running" = 1 ]; then
 		settings || return 1
-		config_signature=$(config_revision)
-		check_config "$CONFIG" || return 1
-		[ "$config_signature" = "$(config_revision)" ] || { ERROR=geo_settings_changed; return 1; }
 		stop_service || return 1
 	fi
 	# Settings or data may also change while the service is stopping.

@@ -187,18 +187,19 @@ ASSET_NAME=honk-core-v0.1.0-beta.5-aarch64-unknown-linux-musl-full.tar.gz
 if extract_binary "$FIXTURE/archive" "$CORE_STAGE/candidate"; then exit 1; fi
 ''', {'archive': body})
 
-    def test_invalid_config_never_replaces_formal_file(self):
+    def test_save_does_not_invoke_core_or_require_valid_configuration(self):
         self.run_shell(r'''
-check_config() { ERROR=check_failed; return 1; }
-if save_config 'invalid' "$expected"; then exit 1; fi
-[ "$(cat "$CONFIG")" = 'old config' ]
+printf '#!/bin/sh\ntouch "$FIXTURE/core-called"\nexit 1\n' > "$BIN"
+chmod 700 "$BIN"
+save_config 'invalid' "$expected"
+[ "$(cat "$CONFIG")" = invalid ]
+[ ! -e "$FIXTURE/core-called" ]
 [ ! -e "$FIXTURE/actions" ]
 [ -z "$SAVE_CANDIDATE" ]
 ''')
 
     def test_stopped_save_and_unchanged_save(self):
         self.run_shell(r'''
-check_config() { return 0; }
 save_config 'new config' "$expected"
 [ "$(cat "$CONFIG")" = 'new config' ]
 [ "$SAVE_CODE" = config_saved ]
@@ -211,7 +212,13 @@ save_config 'new config' "$(config_revision)"
 
     def test_concurrent_editor_changes_are_preserved(self):
         self.run_shell(r'''
-check_config() { echo external > "$CONFIG"; return 0; }
+stage_config() {
+    local candidate
+    candidate=$(mktemp "${CONFIG}.panel.XXXXXX")
+    printf "%s" "$1" > "$candidate"
+    echo external > "$CONFIG"
+    echo "$candidate"
+}
 if save_config 'new config' "$expected"; then exit 1; fi
 [ "$ERROR" = config_changed ]
 [ "$(cat "$CONFIG")" = external ]
@@ -221,7 +228,6 @@ if save_config 'new config' "$expected"; then exit 1; fi
     def test_running_save_restarts_and_reports_saved_revision_on_failure(self):
         self.run_shell(r'''
 touch "$FIXTURE/running"
-check_config() { return 0; }
 run_service() { ERROR=apply_failed; return 1; }
 if save_config 'new config' "$expected"; then exit 1; fi
 [ "$ERROR" = apply_failed ]
@@ -231,7 +237,6 @@ if save_config 'new config' "$expected"; then exit 1; fi
 
     def test_initial_core_install_stays_stopped_even_if_config_invalid(self):
         self.run_shell(r'''
-check_config() { ERROR=check_failed; return 1; }
 echo 'new core' > "$CORE_STAGE/candidate"
 chmod 700 "$CORE_STAGE/candidate"
 activate_core "$CORE_STAGE/candidate"
@@ -242,7 +247,6 @@ activate_core "$CORE_STAGE/candidate"
 
     def test_core_update_retains_previous_and_keeps_stopped_service_stopped(self):
         self.run_shell(r'''
-check_config() { return 0; }
 echo 'old core' > "$BIN"; chmod 700 "$BIN"
 echo 'new core' > "$CORE_STAGE/candidate"; chmod 700 "$CORE_STAGE/candidate"
 activate_core "$CORE_STAGE/candidate"
@@ -251,20 +255,8 @@ activate_core "$CORE_STAGE/candidate"
 [ ! -e "$FIXTURE/actions" ]
 ''')
 
-    def test_core_update_rejects_incompatible_config_before_stopping(self):
-        self.run_shell(r'''
-check_config() { ERROR=check_failed; return 1; }
-echo 'old core' > "$BIN"; chmod 700 "$BIN"
-echo 'new core' > "$CORE_STAGE/candidate"; chmod 700 "$CORE_STAGE/candidate"
-touch "$FIXTURE/running"
-if activate_core "$CORE_STAGE/candidate"; then exit 1; fi
-[ "$(cat "$BIN")" = 'old core' ]
-[ ! -e "$FIXTURE/actions" ]
-''')
-
     def test_failed_core_start_restores_old_core_and_running_state(self):
         self.run_shell(r'''
-check_config() { return 0; }
 echo 'old core' > "$BIN"; chmod 700 "$BIN"
 echo 'new core' > "$CORE_STAGE/candidate"; chmod 700 "$CORE_STAGE/candidate"
 touch "$FIXTURE/running" "$FIXTURE/start-failure"
@@ -278,7 +270,6 @@ if activate_core "$CORE_STAGE/candidate"; then exit 1; fi
 
     def test_stop_failure_never_replaces_current_core(self):
         self.run_shell(r'''
-check_config() { return 0; }
 echo 'old core' > "$BIN"; chmod 700 "$BIN"
 echo 'new core' > "$CORE_STAGE/candidate"; chmod 700 "$CORE_STAGE/candidate"
 touch "$FIXTURE/running" "$FIXTURE/stop-failure"
@@ -289,7 +280,6 @@ if activate_core "$CORE_STAGE/candidate"; then exit 1; fi
 
     def test_rollback_swaps_versions(self):
         self.run_shell(r'''
-check_config() { return 0; }
 echo 'new core' > "$BIN"; chmod 700 "$BIN"
 echo 'old core' > "$BACKUP"; chmod 700 "$BACKUP"
 rollback_core
@@ -363,76 +353,6 @@ download_file() {
 }
 refresh_releases
 ''' + '[ "$(cat "$RUN/releases.json")" = ' + shlex.quote(expected) + ' ]\n', {'releases.json': metadata})
-
-    def test_config_validation_uses_read_only_sentinel_and_fails_closed(self):
-        script = """#!/bin/sh
-[ \"$1\" = --config ] && [ \"$3\" = delay ] && [ \"$5\" = --url ] && [ \"$6\" = 127.0.0.1:0 ] || exit 9
-if grep -q invalid \"$2\"; then echo 'Error: invalid configuration'; exit 1; fi
-printf \"Error: Node '%s' not found in configuration\\n\" \"$4\"
-exit 1
-""".replace('\\"', '"')
-        self.run_shell(r'''
-cp "$FIXTURE/mock-core" "$BIN"; chmod 700 "$BIN"
-check_config "$CONFIG"
-echo invalid > "$CONFIG"
-if check_config "$CONFIG"; then exit 1; fi
-[ "$ERROR" = check_failed ]
-grep -q 'invalid configuration' "$RUN/check.log"
-''', {'mock-core': script})
-
-    def test_check_worker_resolves_includes_beside_the_entry_and_cleans_up(self):
-        script = r'''#!/bin/sh
-[ "$1" = --config ] && [ "$3" = delay ] || exit 9
-cat "$2" > "$FIXTURE/observed"
-directory=${2%/*}
-[ -f "$directory/parts/rules.dae" ] || { echo 'Error: relative include missing'; exit 1; }
-if grep -q invalid "$directory/parts/rules.dae"; then echo 'Error: invalid included configuration'; exit 1; fi
-printf "Error: Node '%s' not found in configuration\n" "$4"
-exit 1
-'''
-        for included in ['global {}', 'invalid']:
-            self.run_shell(r'''
-CONFIG="$FIXTURE/nested/config.dae"
-mkdir -p "${CONFIG%/*}/parts"
-printf 'original config' > "$CONFIG"
-cp "$FIXTURE/include-content" "${CONFIG%/*}/parts/rules.dae"
-printf 'include { parts/rules.dae }\n\n' > "$RUN/validation.conf"
-cp "$RUN/validation.conf" "$FIXTURE/submitted"
-cp "$FIXTURE/mock-core" "$BIN"; chmod 700 "$BIN"
-flock() { return 0; }
-job() { printf '%s:%s' "$1" "$2" > "$FIXTURE/result"; }
-if [ "$(cat "$FIXTURE/include-content")" = invalid ]; then
-    if worker validate '' check-test; then exit 1; fi
-    [ "$(cat "$FIXTURE/result")" = error:check_failed ]
-    grep -q 'invalid included configuration' "$RUN/check.log"
-    candidate="$SAVE_CANDIDATE"
-    [ -f "$candidate" ]
-    worker_exit
-    [ ! -e "$candidate" ]
-else
-    worker validate '' check-test
-    [ "$(cat "$FIXTURE/result")" = success:check_passed ]
-    [ -z "$SAVE_CANDIDATE" ]
-    [ -z "$(find "${CONFIG%/*}" -name '*.panel.*')" ]
-fi
-cmp "$FIXTURE/submitted" "$FIXTURE/observed"
-[ "$(cat "$CONFIG")" = 'original config' ]
-cmp "$FIXTURE/include-content" "${CONFIG%/*}/parts/rules.dae"
-[ ! -e "$FIXTURE/actions" ]
-''', {'mock-core': script, 'include-content': included})
-
-    def test_check_worker_reports_staging_failure_without_checking(self):
-        self.run_shell(r'''
-printf 'submitted' > "$RUN/validation.conf"
-flock() { return 0; }
-job() { printf '%s:%s' "$1" "$2" > "$FIXTURE/result"; }
-stage_config() { return 1; }
-check_config() { touch "$FIXTURE/checked"; }
-if worker validate '' check-test; then exit 1; fi
-[ "$(cat "$FIXTURE/result")" = error:check_prepare_failed ]
-[ ! -e "$FIXTURE/checked" ]
-[ "$(cat "$CONFIG")" = 'old config' ]
-''')
 
     def test_json_loader_rejects_invalid_json(self):
         self.run_shell(r'''
