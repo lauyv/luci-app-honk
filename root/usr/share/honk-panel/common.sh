@@ -3,9 +3,7 @@
 # Shared by the rpcd plugin and detached worker. No client-controlled paths/commands.
 RUN=/tmp/honk-panel
 INIT=/etc/init.d/honk
-COREDIR=/usr/libexec/honk
-BIN="$COREDIR/honk-core"
-BACKUP="$COREDIR/honk-core.old"
+BIN=/usr/bin/honk-core
 MAX_SIZE=65536
 
 prepare() {
@@ -285,7 +283,7 @@ worker() {
 	trap 'worker_exit' EXIT
 	trap 'job error operation_interrupted; exit 1' HUP INT TERM
 	job running operation_running '' "$action"
-	case "$action" in check_updates|install|rollback) ;; *) action_settings "$action" || { job error "$ERROR"; return 1; };; esac
+	action_settings "$action" || { job error "$ERROR"; return 1; }
 	case "$action" in
 		save)
 			content=$(cat "$RUN/save.conf"; printf '.')
@@ -298,22 +296,22 @@ worker() {
 		stop)
 			stop_service || { job error "$ERROR" "$DETAILS"; return 1; }
 			job success 'service_stopped';;
-		check_updates)
-			refresh_releases || { job error "$ERROR" "$DETAILS"; return 1; }
-			job success releases_updated;;
-		install)
-			install_core "$expected" || { job error "$ERROR" "$DETAILS"; return 1; }
-			job success core_installed;;
-		rollback)
-			rollback_core || { job error "$ERROR" "$DETAILS"; return 1; }
-			job success core_rolled_back;;
 		*) job error 'action_unknown'; return 1;;
 	esac
 }
 
 worker_exit() {
-	[ -z "${CORE_STAGE:-}" ] || rm -rf "$CORE_STAGE"
 	[ -z "${SAVE_CANDIDATE:-}" ] || rm -f "$SAVE_CANDIDATE"
 	rm -f "$RUN/service.log" "$RUN/save.conf"
 	unlock
+}
+
+environment_report() {
+	local kernel major minor notes=''
+	kernel=$(uname -r)
+	major=${kernel%%.*}; minor=${kernel#*.}; minor=${minor%%.*}
+	if [ "$major" -lt 6 ] || { [ "$major" = 6 ] && [ "$minor" -lt 12 ]; }; then notes='需要 Linux 6.12+；'; fi
+	[ -r /sys/kernel/btf/vmlinux ] || [ -r /usr/lib/debug/boot/vmlinux ] || notes="${notes}缺少内核 BTF；"
+	[ -r /sys/fs/cgroup/cgroup.controllers ] || notes="${notes}需要 cgroup v2；"
+	printf '%s\n' "${notes:-Linux $kernel · BTF / cgroup v2 可用}"
 }

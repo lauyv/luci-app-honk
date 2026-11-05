@@ -1,16 +1,14 @@
 name: Release
-run-name: Release ${{ inputs.tag }}
+run-name: Package honk ${{ inputs.core_tag || 'upstream update' }}
 on:
+  schedule:
+    - cron: '17 1 * * *'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'New release tag, e.g. v0.1.1'
-        required: true
+      core_tag:
+        description: 'Optional honk version tag; empty selects the newest versioned release (including prereleases)'
+        required: false
         type: string
-      prerelease:
-        description: 'Publish as prerelease'
-        default: false
-        type: boolean
 permissions:
   contents: write
 concurrency:
@@ -19,45 +17,81 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
-      RELEASE_TAG: ${{ inputs.tag }}
       TOOLS_DIR: ${{ github.workspace }}/build/tools
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Check upstream release
+        id: upstream
+        env:
+          REQUESTED_TAG: ${{ inputs.core_tag }}
+        run: |
+          bash .github/scripts/resolve-release.sh "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+      - name: Release summary
+        env:
+          CORE_TAG: ${{ steps.upstream.outputs.tag }}
+          PUBLISH: ${{ steps.upstream.outputs.publish }}
+        run: |
+          echo "Upstream core: $CORE_TAG; new package release required: $PUBLISH" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v7
+        if: steps.upstream.outputs.publish == 'true'
         with:
           node-version: '24'
-      - name: Validate version
-        run: bash .github/scripts/build-apk.sh --metadata
       - name: Check syntax
+        if: steps.upstream.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.upstream.outputs.tag }}
         run: |
+          bash .github/scripts/build-apk.sh --metadata
           for script in .github/scripts/*.sh; do bash -n "$script"; done
-          find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' -o -path '*/uci-defaults/*' \) -exec sh -n {} \;
+          find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' \) -exec sh -n {} \;
           node --check htdocs/luci-static/resources/view/honk/panel.js
       - name: Install packaging tools
+        if: steps.upstream.outputs.publish == 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends binutils fakeroot build-essential meson ninja-build pkg-config libssl-dev zlib1g-dev
+          sudo apt-get install -y --no-install-recommends binutils fakeroot build-essential meson ninja-build pkg-config libssl-dev zlib1g-dev jq
           bash .github/scripts/prepare-tools.sh
-      - name: Package
-        run: bash .github/scripts/build-apk.sh
-      - name: Publish
+      - name: Download and verify official cores
+        if: steps.upstream.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          CORE_TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          for target in aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
+            bash .github/scripts/prepare-core.sh "$CORE_TAG" "$target" "build/cores/$target"
+          done
+          mkdir -p dist
+          cp build/cores/x86_64-unknown-linux-musl/sources/*.tar.gz dist/
+          version=$(build/cores/x86_64-unknown-linux-musl/honk-core --version)
+          echo "$version"
+          [[ "${version##* }" == "$CORE_TAG" ]]
+      - name: Package OpenWrt architectures
+        if: steps.upstream.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          for arch in aarch64_generic aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 x86_64; do
+            target=aarch64-unknown-linux-musl
+            if [[ "$arch" == x86_64 ]]; then target=x86_64-unknown-linux-musl; fi
+            OPENWRT_ARCH="$arch" HONK_CORE_DIR="$PWD/build/cores/$target" bash .github/scripts/build-apk.sh
+          done
+          (cd dist && sha256sum -- *.apk *.tar.gz > SHA256SUMS)
+      - name: Publish
+        if: steps.upstream.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.upstream.outputs.tag }}
+          PRERELEASE: ${{ steps.upstream.outputs.prerelease }}
           BUILD_SHA: ${{ github.sha }}
           NOTES_FILE: ${{ runner.temp }}/honk-release-notes.md
         run: |
           bash .github/scripts/release-notes.sh
           flags=()
           if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
-          metadata=$(bash .github/scripts/build-apk.sh --metadata)
-          version=${metadata%%$'\n'*}
-          gh release create "$RELEASE_TAG" \
-            "dist/luci-app-honk-$version.apk" \
+          gh release create "$RELEASE_TAG" dist/*.apk dist/*.tar.gz dist/SHA256SUMS \
             --target "$BUILD_SHA" --title "$RELEASE_TAG" --notes-file "$NOTES_FILE" "${flags[@]}"

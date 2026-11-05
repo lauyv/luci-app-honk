@@ -1,5 +1,2 @@
 config honk 'main'
 	option conffile '/etc/honk/config.dae'
-
-config panel 'panel'
-	option proxy_prefix 'https://gh-proxy.com'

@@ -3,7 +3,6 @@
 # shellcheck disable=SC1091
 . /usr/share/libubox/jshn.sh
 . /usr/share/honk-panel/common.sh
-. /usr/share/honk-panel/download.sh
 
 reply() {
 	json_init
@@ -26,7 +25,7 @@ queue_worker() {
 
 case "$1" in
 	list)
-		printf '%s\n' '{"status":{},"read":{},"logs":{},"save":{"content":"String","revision":"String"},"action":{"name":"String","revision":"String"},"autostart":{"enabled":true},"preferences":{"proxy":"String"}}'
+		printf '%s\n' '{"status":{},"read":{},"logs":{},"save":{"content":"String","revision":"String"},"action":{"name":"String"},"autostart":{"enabled":true}}'
 		exit 0;;
 	call) ;;
 	*) exit 1;;
@@ -57,10 +56,6 @@ case "$2" in
 		json_add_boolean busy "$busy"
 		json_add_string job "$job_data"
 		json_add_boolean core_installed "$([ -x "$BIN" ] && echo 1 || echo 0)"
-		json_add_boolean rollback_available "$([ -x "$BACKUP" ] && echo 1 || echo 0)"
-		json_add_string target "$(core_target)"
-		json_add_string releases "$(cat "$RUN/releases.json" 2>/dev/null)"
-		json_add_string proxy_prefix "$(core_proxy_prefix)"
 		json_add_string environment "$(environment_report)"
 		json_dump;;
 	read)
@@ -109,17 +104,13 @@ case "$2" in
 		trap - EXIT
 		exit 0;;
 	action)
-		name='' revision=''
+		name=''
 		read_request 1024 || { reply 0 'request_invalid'; exit 0; }
 		json_get_var name name
-		json_get_var revision revision
-		case "$name" in start|stop|check_updates|install|rollback) ;; *) reply 0 'action_unknown'; exit 0;; esac
+		case "$name" in start|stop) ;; *) reply 0 'action_unknown'; exit 0;; esac
 		lock || { reply 0 'operation_busy'; exit 0; }
-		case "$name" in start|stop) action_settings "$name" || { unlock; reply 0 "$ERROR"; exit 0; };; esac
-		if [ "$name" = install ]; then
-			valid_tag "$revision" || { unlock; reply 0 version_invalid; exit 0; }
-		fi
-		queue_worker "$name" "$revision";;
+		action_settings "$name" || { unlock; reply 0 "$ERROR"; exit 0; }
+		queue_worker "$name";;
 	autostart)
 		kind='' enabled=''
 		read_request 1024 || { reply 0 'request_invalid'; exit 0; }
@@ -133,17 +124,5 @@ case "$2" in
 		else
 			reply 0 "$ERROR"
 		fi;;
-	preferences)
-		proxy=''
-		read_request 8192 || { reply 0 request_invalid; exit 0; }
-		json_get_type kind proxy
-		[ "$kind" = string ] || { reply 0 request_invalid; exit 0; }
-		json_get_var proxy proxy
-		valid_preferences "$proxy" || { reply 0 preferences_invalid; exit 0; }
-		lock || { reply 0 operation_busy; exit 0; }
-		trap 'unlock' EXIT
-		if uci set honk.panel.proxy_prefix="$proxy"; then
-			if uci commit honk; then reply 1 preferences_saved; else reply 0 preferences_failed; fi
-		else reply 0 preferences_failed; fi;;
 	*) reply 0 'method_unknown';;
 esac

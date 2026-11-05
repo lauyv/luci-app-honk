@@ -10,13 +10,6 @@
   font-family: monospace;
   resize: vertical;
 }
-#honk-panel .honk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.5em;
-}
 #honk-panel .cbi-page-actions {
   justify-content: flex-end;
 }
@@ -29,8 +22,4 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-#honk-panel .cbi-input-text, #honk-panel .cbi-input-select {
-  min-width: 0; max-width: 100%;
 }

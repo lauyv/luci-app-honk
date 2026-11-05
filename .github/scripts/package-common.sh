@@ -5,18 +5,19 @@ set -euo pipefail
 
 SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 NAME=luci-app-honk
-DESCRIPTION='honk service and core manager for LuCI'
+DESCRIPTION='honk proxy engine and LuCI service manager'
 PROJECT_URL=https://github.com/lauyv/luci-app-honk
 RELEASE=$(sed -n 's/^PKG_RELEASE:=//p' "$SOURCE_DIR/Makefile")
 LICENSE=$(sed -n 's/^PKG_LICENSE:=//p' "$SOURCE_DIR/Makefile")
-: "${RELEASE_TAG:?Set RELEASE_TAG, for example v0.1.1}"
-[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-  echo 'RELEASE_TAG must be vMAJOR.MINOR.PATCH' >&2; exit 1;
+: "${RELEASE_TAG:?Set RELEASE_TAG to the bundled honk tag}"
+[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]] || {
+  echo 'RELEASE_TAG must be vMAJOR.MINOR.PATCH with an optional alpha/beta/rc suffix' >&2; exit 1;
 }
 [[ "$RELEASE" =~ ^[0-9]+$ ]] || {
   echo 'PKG_RELEASE must be a non-negative integer' >&2; exit 1;
 }
-VERSION="${RELEASE_TAG#v}-r$RELEASE"
+VERSION=$(printf '%s' "${RELEASE_TAG#v}" | sed -E 's/-(alpha|beta|rc)\./_\1/')
+VERSION="$VERSION-r$RELEASE"
 # LUCI_DEPENDS contains unconditional package names, including continuation lines.
 DEPENDS=$(awk '
   /^LUCI_DEPENDS:=/ { sub(/^LUCI_DEPENDS:=/, ""); reading=1 }
@@ -36,7 +37,7 @@ prepare_payload() {
   cp "$SOURCE_DIR/LICENSE" "$DATA/usr/share/licenses/$NAME/LICENSE"
   find "$DATA" -type d -exec chmod 0755 {} +
   find "$DATA" -type f -exec chmod 0644 {} +
-  chmod 0755 "$DATA/etc/init.d/honk" "$DATA/etc/uci-defaults/90-honk-panel" \
+  chmod 0755 "$DATA/etc/init.d/honk" \
     "$DATA/usr/libexec/rpcd/luci.honk" "$DATA/usr/libexec/honk-panel-worker"
   chmod 0600 "$DATA/etc/config/honk" "$DATA/etc/honk/config.dae"
 
@@ -52,6 +53,10 @@ default_postinst
     rm -f /tmp/luci-indexcache.*
     rm -rf /tmp/luci-modulecache/
     /etc/init.d/rpcd reload 2>/dev/null
+    # Pick up the packaged core when upgrading an enabled service.
+    if [ "${PKG_UPGRADE:-}" = 1 ] && /etc/init.d/honk enabled; then
+        /etc/init.d/honk restart
+    fi
 }
 exit 0
 EOF

@@ -13,5 +13,5 @@ jobs:
       - name: Check syntax
         run: |
           for script in .github/scripts/*.sh; do bash -n "$script"; done
-          find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' -o -path '*/uci-defaults/*' \) -exec sh -n {} \;
+          find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' \) -exec sh -n {} \;
           node --check htdocs/luci-static/resources/view/honk/panel.js

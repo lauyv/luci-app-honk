@@ -25,16 +25,17 @@ fi
 git log --reverse --format='%B' "$COMMIT_RANGE" -- > "$NOTES_FILE"
 shopt -s nullglob
 APK_FILES=(dist/luci-app-honk-*.apk)
-[[ ${#APK_FILES[@]} -eq 1 ]] || {
-  printf 'Expected exactly one APK in dist, found %d\n' "${#APK_FILES[@]}" >&2
+[[ ${#APK_FILES[@]} -eq 5 ]] || {
+  printf 'Expected five architecture APKs in dist, found %d\n' "${#APK_FILES[@]}" >&2
   exit 1
 }
-APK_NAME=$(basename -- "${APK_FILES[0]}")
-
 cat >> "$NOTES_FILE" <<EOF
 
-Install:
-apk add --allow-untrusted ./$APK_NAME
+Bundled honk: https://github.com/daeuniverse/honk/releases/tag/$RELEASE_TAG
 
-/etc/init.d/rpcd restart
+Choose the APK matching \`apk --print-arch\`:
 EOF
+for apk in "${APK_FILES[@]}"; do
+  printf '\napk add --allow-untrusted ./%s\n' "$(basename -- "$apk")" >> "$NOTES_FILE"
+done
+printf '\n/etc/init.d/rpcd restart\n' >> "$NOTES_FILE"

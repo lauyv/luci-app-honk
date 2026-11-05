@@ -1,11 +1,11 @@
 {
   "luci-app-honk": {
-    "description": "管理 honk 配置、服务与核心",
+    "description": "管理 honk 配置与服务",
     "read": {
       "ubus": { "luci.honk": ["status", "read", "logs"] }
     },
     "write": {
-      "ubus": { "luci.honk": ["save", "action", "autostart", "preferences"] }
+      "ubus": { "luci.honk": ["save", "action", "autostart"] }
     }
   }
 }

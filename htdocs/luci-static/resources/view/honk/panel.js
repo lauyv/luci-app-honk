@@ -20,9 +20,8 @@ const api = {
   read: method('read'),
   logs: method('logs'),
   save: method('save', ['content', 'revision']),
-  action: method('action', ['name', 'revision']),
+  action: method('action', ['name']),
   autostart: method('autostart', ['enabled']),
-  preferences: method('preferences', ['proxy']),
 };
 
 const messages = {
@@ -48,29 +47,6 @@ const messages = {
   content_invalid: '配置内容必须是字符串',
   operation_busy: '另一项操作正在执行',
   config_save_failed: '无法保存配置文件',
-  core_missing: '尚未安装核心，请在核心管理中安装',
-  architecture_unsupported: '目前支持 ARM64 和 x86_64 设备',
-  download_failed: '下载失败，请检查网络、代理设置或 GitHub API 限制',
-  download_too_large: '下载文件超过允许大小',
-  releases_invalid: 'GitHub 发布信息无效',
-  releases_updated: '官方版本列表已更新',
-  version_invalid: '请选择有效的官方版本',
-  asset_missing: '该版本缺少对应架构的 full 核心或校验文件',
-  digest_missing: '官方 API 未提供可靠的 SHA-256 摘要，未安装',
-  digest_mismatch: '摘要校验失败，当前核心保持不变',
-  archive_invalid: '压缩包结构无效，当前核心保持不变',
-  binary_invalid: '核心不是适合本机的可执行程序',
-  version_mismatch: '核心版本与选择的版本不一致',
-  core_path_unsafe: '核心目录必须为 root 所有，且不能使用符号链接',
-  core_write_failed: '无法写入核心目录，请检查剩余空间和权限',
-  core_installed: '核心安装完成，保持原运行状态',
-  core_rolled_back: '已回退到上一核心，保持原运行状态',
-  core_restored: '新核心启动失败，已恢复并启动旧核心',
-  core_recovery_failed: '核心恢复未完成，请查看日志；上一核心仍保留在核心目录',
-  rollback_missing: '没有可回退的核心',
-  preferences_invalid: '代理前缀应留空或填写有效的 HTTPS 地址',
-  preferences_saved: '核心管理设置已保存',
-  preferences_failed: '无法保存核心管理设置',
   config_saved: '配置文件已保存；服务保持停止',
   config_unchanged: '配置没有变化；未发送重载请求',
   config_changed: '配置文件已改变，请重新加载后再保存',
@@ -86,9 +62,6 @@ const actions = {
   save: '保存配置',
   start: '启动',
   stop: '停止',
-  check_updates: '检查版本',
-  install: '安装核心',
-  rollback: '回退核心',
 };
 
 function message(result) {
@@ -135,13 +108,6 @@ return view.extend({
     });
     this.boot.disabled = busy || !this.writable;
     this.running.disabled = busy || !this.writable || !this.status.core_installed;
-    if (this.releaseSelect) {
-      const readonly = busy || !this.writable;
-      this.releaseSelect.disabled = readonly;
-      this.proxyPrefix.disabled = readonly;
-      this.installButton.disabled = readonly || !this.status.target || !this.releaseSelect.value;
-      this.rollbackButton.disabled = readonly || !this.status.rollback_available;
-    }
     this.editor.readOnly = busy || !this.writable || !this.loaded;
   },
 
@@ -203,73 +169,10 @@ return view.extend({
     return this.editor.value;
   },
 
-  async queue(name, revision) {
-    checked(await api.action(name, revision || ''));
+  async queue(name) {
+    checked(await api.action(name));
     this.status.busy = true;
     this.lastJob = null;
-  },
-
-  async saveCorePreferences() {
-    checked(await api.preferences(this.proxyPrefix.value.trim()));
-  },
-
-  updateCore(status) {
-    this.coreVersion.textContent = status.version || '尚未安装';
-    this.coreTarget.textContent = status.target ? status.target + '-full' : '不支持当前设备架构';
-    if (!this.preferencesLoaded) {
-      this.proxyPrefix.value = status.proxy_prefix || '';
-      this.preferencesLoaded = true;
-    }
-    const cached = status.releases || '';
-    if (cached !== this.releaseCache) {
-      this.releaseCache = cached;
-      const selected = this.releaseSelect.value;
-      let versions = [];
-      try { versions = JSON.parse(cached).versions || []; } catch { /* No cache before the first check. */ }
-      this.releaseSelect.replaceChildren(...(versions.length
-        ? versions.map(tag => E('option', { value: tag }, tag))
-        : [E('option', { value: '' }, '请先检查版本')]));
-      if (versions.includes(selected)) this.releaseSelect.value = selected;
-      this.releaseHint.textContent = versions.length
-        ? '列出官方最近 10 条发布中适合本机的 full 构建，包含预发布版。'
-        : '';
-    }
-  },
-
-  renderCore() {
-    this.coreVersion = E('span');
-    this.coreTarget = E('code');
-    this.releaseHint = E('p', { class: 'cbi-section-descr' });
-    this.releaseSelect = E('select', { class: 'cbi-input-select', 'aria-label': '核心版本' });
-    this.proxyPrefix = E('input', {
-      class: 'cbi-input-text', type: 'url', placeholder: 'https://gh-proxy.com', 'aria-label': '代理前缀',
-    });
-    const check = this.button('检查版本', () => this.queue('check_updates'));
-    const preferences = this.button('保存核心设置', async () => {
-      await this.saveCorePreferences();
-      this.notify(messages.preferences_saved);
-    });
-    this.installButton = this.button('安装／更新', async () => {
-      const tag = this.releaseSelect.value;
-      if (!tag) throw new Error('请先检查并选择核心版本');
-      if (!window.confirm('安装 ' + tag + '？运行中的服务会短暂停止；启动失败时尝试恢复旧核心。')) return;
-      await this.saveCorePreferences();
-      await this.queue('install', tag);
-    }, 'apply');
-    this.rollbackButton = this.button('回退上一版本', async () => {
-      if (!window.confirm('回退到上一次保留的核心？运行中的服务会短暂停止。')) return;
-      await this.queue('rollback');
-    });
-    this.releaseSelect.addEventListener('change', () => this.updateControls());
-    return E('div', { 'data-tab': 'core', 'data-tab-title': '核心管理' }, [
-      field('当前版本', this.coreVersion),
-      field('下载构建', this.coreTarget),
-      field('可用版本', [E('div', { class: 'honk-actions' }, [this.releaseSelect, check]), this.releaseHint]),
-      field('代理前缀', [this.proxyPrefix,
-        E('div', { class: 'cbi-value-description' }, '留空时直连 GitHub；填写 https://gh-proxy.com 或自定义 HTTPS 前缀时用于核心文件下载，不代理 GitHub API。')]),
-      E('div', { class: 'cbi-page-actions honk-actions' }, [preferences, this.installButton, this.rollbackButton]),
-      E('p', { class: 'cbi-section-descr' }, '下载后核对官方摘要、架构、版本和现有配置。更新保持原运行状态；核心不由 APK 管理。'),
-    ]);
   },
 
   async save() {
@@ -283,9 +186,8 @@ return view.extend({
   updateStatus(status) {
     this.status = status;
     this.runtime.textContent = status.running ? '运行中 · PID ' + status.pid : '已停止';
-    this.version.textContent = status.version || '尚未安装核心，请前往“核心管理”安装';
+    this.version.textContent = status.version || '缺少核心，请重新安装软件包';
     this.environment.textContent = status.environment || '';
-    this.updateCore(status);
     this.path.textContent = status.config || '未配置';
     if (!this.localBusy) {
       this.boot.checked = !!status.autostart;
@@ -420,8 +322,7 @@ return view.extend({
       this.logs,
     ]);
     logs.addEventListener('cbi-tab-active', () => this.refreshLogs());
-    const core = this.renderCore();
-    const panes = E('div', {}, [overview, config, core, logs]);
+    const panes = E('div', {}, [overview, config, logs]);
     const root = E('div', { class: 'cbi-map', id: 'honk-panel' }, [
       E('link', { rel: 'stylesheet', href: L.resource('view/honk/panel.css') }),
       E('h2', {}, 'honk'),

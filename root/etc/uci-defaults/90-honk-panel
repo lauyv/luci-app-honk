@@ -1,8 +1,0 @@
-#!/bin/sh
-# shellcheck shell=busybox
-# Only a first installation disables boot; preserve the user's setting on upgrade.
-[ "$(uci -q get honk.panel.initialized)" != 1 ] || exit 0
-uci set honk.panel.initialized=1
-uci commit honk
-/etc/init.d/honk disable
-exit 0

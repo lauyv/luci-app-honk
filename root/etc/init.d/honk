@@ -3,7 +3,7 @@
 USE_PROCD=1
 START=99
 STOP=01
-PROG=/usr/libexec/honk/honk-core
+PROG=/usr/bin/honk-core
 
 start_service() {
 	local conffile
@@ -13,18 +13,14 @@ start_service() {
 		if [ "$PKG_UPGRADE" != 1 ]; then disable; return 0; fi
 		enabled || return 0
 	fi
-	[ -x "$PROG" ] || { logger -t honk 'Install a core from LuCI first'; return 1; }
-	# Never compete with another package or a manually started honk/dae service.
+	[ -x "$PROG" ] || { logger -t honk 'Core binary is missing; reinstall luci-app-honk'; return 1; }
+	# dae uses the same eBPF interfaces and network namespace.
 	if [ -x /etc/init.d/dae ]; then
 		local dae_state
 		dae_state=$(ubus call service list '{"name":"dae"}') || return 1
 		if jsonfilter -s "$dae_state" -e '@.dae.instances.*.running' | grep -qx true; then
 			logger -t honk 'dae is running; stop it before starting honk'; return 1
 		fi
-	fi
-	if [ -x /usr/bin/honk-core ]; then
-		logger -t honk 'Another honk package is installed; remove it before using this manager'
-		return 1
 	fi
 	local release major minor
 	release=$(uname -r); major=${release%%.*}; minor=${release#*.}; minor=${minor%%.*}
