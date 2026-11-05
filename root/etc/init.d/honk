@@ -52,10 +52,18 @@ start_service() {
 }
 
 reload_service() {
-	# Restart covers honk's process-scoped settings as well as routing changes.
+	local conffile state
 	procd_running honk main || return 0
-	stop
-	start
+	config_load honk
+	config_get conffile main conffile /etc/honk/config.dae
+	state=$(ubus call service list '{"name":"honk"}') || return 1
+	if jsonfilter -s "$state" -e '@.honk.instances.main.command[*]' | grep -qxF -- "$conffile"; then
+		# The core locates its instance lock and signals that process with SIGHUP.
+		"$PROG" reload
+	else
+		# procd replaces the instance when its command/configuration path changes.
+		start
+	fi
 }
 
 service_triggers() {

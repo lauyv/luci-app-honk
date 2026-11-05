@@ -22,12 +22,11 @@ const api = {
   save: method('save', ['content', 'revision']),
   action: method('action', ['name', 'revision']),
   autostart: method('autostart', ['enabled']),
-  geo: method('geo', ['geosite_url', 'geoip_url']),
   preferences: method('preferences', ['proxy']),
 };
 
 const messages = {
-  apply_failed: '配置已保存，但服务未能稳定启动，请检查日志并修改配置',
+  apply_failed: '配置已保存，但重载请求失败或服务运行异常，请检查日志',
   operation_interrupted: '操作已中断，请检查配置和服务状态',
   config_path_invalid: '配置文件必须位于 /etc/honk 内，且以 .dae 结尾',
   config_not_regular: '配置路径不是普通文件',
@@ -36,7 +35,7 @@ const messages = {
   config_missing: '没有已保存的配置',
   config_too_large: '配置大小超过 64 KiB',
   operation_running: '正在执行：%s',
-  config_applied: '配置已应用，服务 PID 保持稳定。未测试网络连通性。',
+  config_applied: '配置已保存并发送重载请求，请在日志中确认结果；部分设置需重启服务。',
   start_failed: '服务未能稳定启动，请检查日志',
   service_running: '服务正在运行',
   stop_failed: '服务未能停止',
@@ -69,21 +68,11 @@ const messages = {
   core_restored: '新核心启动失败，已恢复并启动旧核心',
   core_recovery_failed: '核心恢复未完成，请查看日志；上一核心仍保留在核心目录',
   rollback_missing: '没有可回退的核心',
-  geo_url_invalid: 'Geo 下载地址必须为有效的 HTTPS 地址',
-  geo_invalid: 'Geo 文件为空、过大或基础格式检查失败',
-  geo_path_invalid: '自定义 Geo 数据目录无效',
-  geo_empty: '请至少填写一个 Geo 下载地址',
-  geo_write_failed: '无法保存 Geo 数据或设置，请检查空间和权限',
-  geo_settings_changed: '下载期间设置或数据发生变化，请刷新后重试',
-  geo_restart_failed: 'Geo 设置已保存，但服务未能启动',
-  geo_restored: '新 Geo 数据启动失败，已恢复旧文件和设置并启动服务',
-  geo_recovery_failed: 'Geo 数据恢复未完成，请查看日志及详情中的备份目录',
-  geo_applied: 'Geo 数据已更新，保持原运行状态',
   preferences_invalid: '代理前缀应留空或填写有效的 HTTPS 地址',
   preferences_saved: '核心管理设置已保存',
   preferences_failed: '无法保存核心管理设置',
   config_saved: '配置文件已保存；服务保持停止',
-  config_unchanged: '配置没有变化；服务未重启',
+  config_unchanged: '配置没有变化；未发送重载请求',
   config_changed: '配置文件已改变，请重新加载后再保存',
   operation_queued: '操作已加入队列',
   enabled_invalid: 'enabled 必须是布尔值',
@@ -100,7 +89,6 @@ const actions = {
   check_updates: '检查版本',
   install: '安装核心',
   rollback: '回退核心',
-  geo: '应用 Geo 数据',
 };
 
 function message(result) {
@@ -151,8 +139,6 @@ return view.extend({
       const readonly = busy || !this.writable;
       this.releaseSelect.disabled = readonly;
       this.proxyPrefix.disabled = readonly;
-      this.geositeUrl.disabled = readonly;
-      this.geoipUrl.disabled = readonly;
       this.installButton.disabled = readonly || !this.status.target || !this.releaseSelect.value;
       this.rollbackButton.disabled = readonly || !this.status.rollback_available;
     }
@@ -227,20 +213,11 @@ return view.extend({
     checked(await api.preferences(this.proxyPrefix.value.trim()));
   },
 
-  async applyGeo() {
-    if (this.status.running && !window.confirm('Geo 数据下载成功后会重启正在运行的服务，继续？')) return;
-    checked(await api.geo(this.geositeUrl.value.trim(), this.geoipUrl.value.trim()));
-    this.status.busy = true;
-    this.lastJob = null;
-  },
-
   updateCore(status) {
     this.coreVersion.textContent = status.version || '尚未安装';
     this.coreTarget.textContent = status.target ? status.target + '-full' : '不支持当前设备架构';
     if (!this.preferencesLoaded) {
       this.proxyPrefix.value = status.proxy_prefix || '';
-      this.geositeUrl.value = status.geosite_url || '';
-      this.geoipUrl.value = status.geoip_url || '';
       this.preferencesLoaded = true;
     }
     const cached = status.releases || '';
@@ -292,21 +269,6 @@ return view.extend({
         E('div', { class: 'cbi-value-description' }, '留空时直连 GitHub；填写 https://gh-proxy.com 或自定义 HTTPS 前缀时用于核心文件下载，不代理 GitHub API。')]),
       E('div', { class: 'cbi-page-actions honk-actions' }, [preferences, this.installButton, this.rollbackButton]),
       E('p', { class: 'cbi-section-descr' }, '下载后核对官方摘要、架构、版本和现有配置。更新保持原运行状态；核心不由 APK 管理。'),
-    ]);
-  },
-
-  renderGeo() {
-    this.geositeUrl = E('input', { class: 'cbi-input-text honk-geo-url', type: 'url', maxlength: 2048,
-      placeholder: 'https://example.com/geosite.dat', 'aria-label': 'geosite.dat 下载地址' });
-    this.geoipUrl = E('input', { class: 'cbi-input-text honk-geo-url', type: 'url', maxlength: 2048,
-      placeholder: 'https://example.com/geoip.dat', 'aria-label': 'geoip.dat 下载地址' });
-    const geoApply = this.button('更新 Geo 数据', () => this.applyGeo(), 'apply');
-    return E('div', { 'data-tab': 'geo', 'data-tab-title': 'Geo 数据' }, [
-      field('geosite.dat 地址', this.geositeUrl),
-      field('geoip.dat 地址', this.geoipUrl),
-      E('p', { class: 'cbi-section-descr' }, '文件固定保存为 /etc/honk/geosite.dat 和 /etc/honk/geoip.dat，请在配置中设置 data_dir: \'/etc/honk\'。留空项保留已有文件。按填写的 URL 直接下载；需要加速时，请在 URL 中填写完整代理地址。'),
-      E('p', { class: 'cbi-section-descr' }, '点击“更新 Geo 数据”将使用当前填写的地址重新下载。运行中的服务会在下载成功后重启，停止的服务保持停止。'),
-      E('div', { class: 'cbi-page-actions honk-actions' }, [geoApply]),
     ]);
   },
 
@@ -429,7 +391,7 @@ return view.extend({
     const config = E('div', { 'data-tab': 'config', 'data-tab-title': '配置' }, [
       this.dirty,
       this.editor,
-      E('p', { class: 'cbi-section-descr' }, '运行中的服务会重启，已停止的服务保持停止。'),
+      E('p', { class: 'cbi-section-descr' }, '保存后向运行中的服务发送重载请求，已停止的服务保持停止。重载结果请查看日志；部分设置需手动重启服务。'),
       E('div', { class: 'cbi-page-actions honk-actions' }, [
         this.button(
           '重载配置',
@@ -459,8 +421,7 @@ return view.extend({
     ]);
     logs.addEventListener('cbi-tab-active', () => this.refreshLogs());
     const core = this.renderCore();
-    const geo = this.renderGeo();
-    const panes = E('div', {}, [overview, config, core, geo, logs]);
+    const panes = E('div', {}, [overview, config, core, logs]);
     const root = E('div', { class: 'cbi-map', id: 'honk-panel' }, [
       E('link', { rel: 'stylesheet', href: L.resource('view/honk/panel.css') }),
       E('h2', {}, 'honk'),

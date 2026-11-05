@@ -4,7 +4,6 @@
 . /usr/share/libubox/jshn.sh
 . /usr/share/honk-panel/common.sh
 . /usr/share/honk-panel/download.sh
-. /usr/share/honk-panel/geo.sh
 
 reply() {
 	json_init
@@ -27,7 +26,7 @@ queue_worker() {
 
 case "$1" in
 	list)
-		printf '%s\n' '{"status":{},"read":{},"logs":{},"save":{"content":"String","revision":"String"},"action":{"name":"String","revision":"String"},"autostart":{"enabled":true},"geo":{"geosite_url":"String","geoip_url":"String"},"preferences":{"proxy":"String"}}'
+		printf '%s\n' '{"status":{},"read":{},"logs":{},"save":{"content":"String","revision":"String"},"action":{"name":"String","revision":"String"},"autostart":{"enabled":true},"preferences":{"proxy":"String"}}'
 		exit 0;;
 	call) ;;
 	*) exit 1;;
@@ -62,8 +61,6 @@ case "$2" in
 		json_add_string target "$(core_target)"
 		json_add_string releases "$(cat "$RUN/releases.json" 2>/dev/null)"
 		json_add_string proxy_prefix "$(core_proxy_prefix)"
-		json_add_string geosite_url "$(geo_config_url geosite)"
-		json_add_string geoip_url "$(geo_config_url geoip)"
 		json_add_string environment "$(environment_report)"
 		json_dump;;
 	read)
@@ -136,24 +133,6 @@ case "$2" in
 		else
 			reply 0 "$ERROR"
 		fi;;
-	geo)
-		geosite_url='' geoip_url=''
-		read_request 8192 || { reply 0 request_invalid; exit 0; }
-		for key in geosite_url geoip_url; do
-			json_get_type kind "$key"
-			[ "$kind" = string ] || { reply 0 request_invalid; exit 0; }
-		done
-		json_get_var geosite_url geosite_url
-		json_get_var geoip_url geoip_url
-		for url in "$geosite_url" "$geoip_url"; do
-			[ -z "$url" ] || valid_geo_url "$url" || { reply 0 geo_url_invalid; exit 0; }
-		done
-		lock || { reply 0 operation_busy; exit 0; }
-		trap 'rm -f "$RUN/geo-request.json"; unlock' EXIT
-		json_dump > "$RUN/geo-request.json" || { reply 0 geo_write_failed; exit 0; }
-		queue_worker geo
-		trap - EXIT
-		exit 0;;
 	preferences)
 		proxy=''
 		read_request 8192 || { reply 0 request_invalid; exit 0; }

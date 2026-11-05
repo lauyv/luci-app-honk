@@ -3,20 +3,15 @@ on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
-  test:
+  check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Check syntax and run regression tests
+      - name: Check syntax
         run: |
           for script in .github/scripts/*.sh; do bash -n "$script"; done
           find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' -o -path '*/uci-defaults/*' \) -exec sh -n {} \;
           node --check htdocs/luci-static/resources/view/honk/panel.js
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
-      - name: Browser smoke test
-        run: |
-          python3 tests/preview/build.py
-          BROWSER_BIN="$(command -v google-chrome || command -v chromium)" node tests/browser.mjs

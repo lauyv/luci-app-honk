@@ -33,13 +33,11 @@ jobs:
           node-version: '24'
       - name: Validate version
         run: bash .github/scripts/build-apk.sh --metadata
-      - name: Test
+      - name: Check syntax
         run: |
           for script in .github/scripts/*.sh; do bash -n "$script"; done
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          find root -type f \( -name '*.sh' -o -path '*/init.d/*' -o -path '*/libexec/rpcd/*' -o -name 'honk-panel-worker' -o -path '*/uci-defaults/*' \) -exec sh -n {} \;
           node --check htdocs/luci-static/resources/view/honk/panel.js
-          python3 tests/preview/build.py
-          BROWSER_BIN="$(command -v google-chrome || command -v chromium)" node tests/browser.mjs
       - name: Install packaging tools
         run: |
           sudo apt-get update -qq

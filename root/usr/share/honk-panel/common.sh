@@ -84,7 +84,7 @@ recover_job() {
 		json_get_var JOB_ID id
 		case "$state" in queued|running) job error operation_interrupted;; esac
 	fi
-	rm -f "$RUN/service.log" "$RUN/save.conf" "$RUN/geo-request.json"
+	rm -f "$RUN/service.log" "$RUN/save.conf"
 }
 
 job() {
@@ -251,7 +251,7 @@ save_config() {
 	SAVE_REVISION=$(config_revision)
 	SAVE_CODE=config_saved
 	if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-		run_service restart apply_failed || return 1;
+		run_service reload apply_failed || return 1;
 		SAVE_CODE=config_applied
 	fi
 }
@@ -285,7 +285,7 @@ worker() {
 	trap 'worker_exit' EXIT
 	trap 'job error operation_interrupted; exit 1' HUP INT TERM
 	job running operation_running '' "$action"
-	case "$action" in check_updates|install|rollback|geo) ;; *) action_settings "$action" || { job error "$ERROR"; return 1; };; esac
+	case "$action" in check_updates|install|rollback) ;; *) action_settings "$action" || { job error "$ERROR"; return 1; };; esac
 	case "$action" in
 		save)
 			content=$(cat "$RUN/save.conf"; printf '.')
@@ -304,9 +304,6 @@ worker() {
 		install)
 			install_core "$expected" || { job error "$ERROR" "$DETAILS"; return 1; }
 			job success core_installed;;
-		geo)
-			apply_geo || { job error "$ERROR" "$DETAILS"; return 1; }
-			job success geo_applied "$DETAILS";;
 		rollback)
 			rollback_core || { job error "$ERROR" "$DETAILS"; return 1; }
 			job success core_rolled_back;;
@@ -315,9 +312,8 @@ worker() {
 }
 
 worker_exit() {
-	if [ -n "${GEO_STAGE:-}" ] && [ "${GEO_KEEP:-0}" != 1 ]; then rm -rf "$GEO_STAGE"; fi
 	[ -z "${CORE_STAGE:-}" ] || rm -rf "$CORE_STAGE"
 	[ -z "${SAVE_CANDIDATE:-}" ] || rm -f "$SAVE_CANDIDATE"
-	rm -f "$RUN/service.log" "$RUN/save.conf" "$RUN/geo-request.json"
+	rm -f "$RUN/service.log" "$RUN/save.conf"
 	unlock
 }

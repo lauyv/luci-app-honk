@@ -3,5 +3,3 @@ config honk 'main'
 
 config panel 'panel'
 	option proxy_prefix 'https://gh-proxy.com'
-	option geosite_url 'https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat'
-	option geoip_url 'https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat'

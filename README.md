@@ -1,6 +1,6 @@
 # honk for LuCI
 
-适用于 OpenWrt / ImmortalWrt 25.12 的 honk 管理界面，提供服务、配置、核心管理、Geo 数据和系统日志页面。
+适用于 OpenWrt / ImmortalWrt 25.12 的 honk 管理界面，提供服务、配置、核心管理和系统日志页面。
 
 应用不包含核心，从 [honk 官方 Release](https://github.com/daeuniverse/honk/releases) 下载静态 musl full 构建，支持 ARM64 和 x86_64。运行需要 root、Linux 6.12+、BTF 和 cgroup v2；软件包依赖见 [Makefile](Makefile)。
 
@@ -9,10 +9,10 @@
 1. 安装应用后重新登录 LuCI，进入 **服务 → honk**。首次安装不会启动服务或启用开机启动。
 2. 在 **核心管理** 检查版本并安装核心。版本列表筛选官方最近 10 条发布中适合本机的 full 构建，包含预发布版。
 3. 在 **配置** 编辑 `/etc/honk/config.dae`，按实际环境设置接口、订阅、节点和路由。配置示例见 [config.dae](root/etc/honk/config.dae)。
-4. 使用 Geo 规则时，在 **Geo 数据** 下载所需文件，也可通过 SSH 手动放入数据目录。
+4. 使用 Geo 规则时，首次启动前通过 SSH 执行下方 [Geo 数据](#geo-数据)中的两条 curl 命令。
 5. 保存配置，然后打开 **运行服务**。**开机启动**单独设置。
 
-服务运行时保存新配置会重启应用，停止时保持停止；未修改配置不会触发重启。编辑器只修改主配置文件，配置上限为 64 KiB。
+服务运行时保存新配置会发送热重载请求，停止时保持停止；未修改配置不会触发重载。请求成功不代表核心已接受新配置，请查看系统日志确认。下载来源、数据目录等需要重启才能生效的设置，修改后需手动停止再启动服务。`/etc/init.d/honk reload` 在配置路径不变时热重载，路径变化时由 procd 替换服务实例。编辑器只修改主配置文件，配置上限为 64 KiB。
 
 ## 核心管理
 
@@ -36,24 +36,25 @@ LuCI 编辑器管理文件配置，不使用 `--store db`。
 
 ```dae
 global {
-    data_dir: '/etc/honk'
+    data_dir: '/etc/honk/data'
 }
 ```
 
-Geo 下载固定保存为 `/etc/honk/geosite.dat` 和 `/etc/honk/geoip.dat`，数据库位于 `/etc/honk/state/honk.db`。核心按配置中的 `data_dir` 查找文件，启动脚本不设置额外的 Geo 环境变量。自行修改 `data_dir` 时需同步调整文件位置。
+Geo 文件保存为 `/etc/honk/data/geosite.dat` 和 `/etc/honk/data/geoip.dat`，状态数据库位于 `/etc/honk/data/state/honk.db`。核心按配置中的 `data_dir` 查找文件。自行修改 `data_dir` 时需同步调整下方下载路径。已有安装切换目录前，先停止服务，将旧目录中的 Geo 文件和 `state` 目录迁入新目录，再启动服务。
 
-默认下载地址：
+首次使用时，通过 SSH 在路由器上执行：
 
-```text
-geosite.dat: https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat
-geoip.dat:   https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat
+```sh
+mkdir -p /etc/honk/data
+curl -fL --retry 3 -o /etc/honk/data/geosite.dat 'https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat'
+curl -fL --retry 3 -o /etc/honk/data/geoip.dat 'https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat'
 ```
 
-Geo 按填写的完整 URL 直接下载。点击 **更新 Geo 数据**使用当前填写的地址重新下载。空地址项保留已有文件，至少填写一个地址。
+确认两条命令均成功后再启动服务。仅设置 `assets.geodata` 下载来源不会补齐缺失文件；首次必须手动下载。
 
-文件上限为 64 MiB，下载并通过基础格式检查后才替换；完整数据有效性由核心加载时确认。服务运行时更新成功后重启，启动失败尝试恢复旧文件。恢复失败会保留备份并在任务详情显示路径。断电或强制终止更新可能需要手动恢复。
+后续更新由 Honk 核心管理，示例配置已设置 `assets.geodata` 来源与直连下载路由。Native API 开启、状态数据库可用且允许配置写入并配置凭据时，核心默认每 24 小时检查已加载资源的更新，可通过原生面板调整设置或立即更新。启动不会立即下载；首次检查至少等待 5 分钟，再加最多 60 分钟随机延迟。
 
-sysupgrade 保留清单仅包含 `/etc/honk/*.dae` 配置文件。
+sysupgrade 保留整个 `/etc/honk/` 目录，包括配置、Geo 文件和状态数据库。
 
 ## 构建
 
@@ -70,16 +71,13 @@ GitHub Actions 的 **Release** 工作流仅发布 APK。输入与 Makefile 中 `
 apk add --allow-untrusted /tmp/luci-app-honk-0.1.0-r1.apk
 ```
 
-## 开发验证
+## 语法检查
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py' -v
 node --check htdocs/luci-static/resources/view/honk/panel.js
-python3 tests/preview/build.py
-BROWSER_BIN=/path/to/chromium node tests/browser.mjs
 ```
 
-直接打开 `build/preview.html` 后，版本查询会读取官方 GitHub API，并按选择的预览架构筛选 full 构建；安装和服务操作仍为模拟。浏览器自动测试使用固定的 API 响应，无需联网。主机测试不能替代设备上的实际安装和运行验证。
+实际安装和运行需在设备上验证。
 
 ## 许可证
 

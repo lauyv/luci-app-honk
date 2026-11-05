@@ -2,7 +2,7 @@ global {
   bootstrap_resolver: '119.29.29.29:53'
   check_interval: 300s
   check_tolerance: 10ms
-  data_dir: '/etc/honk'
+  data_dir: '/etc/honk/data'
   dial_mode: domain++
   log_level: error
   tcp_check_url: 'http://cp.cloudflare.com/generate_204'
@@ -66,5 +66,13 @@ experimental {
     }
     cache_file {
         enabled: true
+    }
+}
+
+assets {
+    geodata {
+        geosite: 'https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat'
+        geoip: 'https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat'
+        route: direct
     }
 }

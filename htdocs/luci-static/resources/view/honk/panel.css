@@ -34,5 +34,3 @@
 #honk-panel .cbi-input-text, #honk-panel .cbi-input-select {
   min-width: 0; max-width: 100%;
 }
-
-#honk-panel .honk-geo-url { width: 100%; }
