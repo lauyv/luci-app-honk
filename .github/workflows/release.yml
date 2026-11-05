@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'New version, e.g. v0.1.0'
+        description: 'New release tag, e.g. v0.1.1'
         required: true
         type: string
       prerelease:

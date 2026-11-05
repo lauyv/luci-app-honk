@@ -1,9 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-honk
-PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
+
+# Optional version override for SDK or firmware source builds.
+ifneq ($(LUCI_HONK_VERSION),)
+  PKG_VERSION:=$(LUCI_HONK_VERSION)
+endif
 
 LUCI_TITLE:=honk 配置、服务与核心管理
 LUCI_DEPENDS:=+luci-base +rpcd +jshn +jsonfilter +curl +ca-bundle +flock \

@@ -7,15 +7,11 @@ SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 NAME=luci-app-honk
 DESCRIPTION='honk service and core manager for LuCI'
 PROJECT_URL=https://github.com/lauyv/luci-app-honk
-SOURCE_VERSION=$(sed -n 's/^PKG_VERSION:=//p' "$SOURCE_DIR/Makefile")
 RELEASE=$(sed -n 's/^PKG_RELEASE:=//p' "$SOURCE_DIR/Makefile")
 LICENSE=$(sed -n 's/^PKG_LICENSE:=//p' "$SOURCE_DIR/Makefile")
-RELEASE_TAG=${RELEASE_TAG:-v$SOURCE_VERSION}
+: "${RELEASE_TAG:?Set RELEASE_TAG, for example v0.1.1}"
 [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo 'RELEASE_TAG must be vMAJOR.MINOR.PATCH' >&2; exit 1;
-}
-[[ "$RELEASE_TAG" == "v$SOURCE_VERSION" ]] || {
-  echo 'Release tag must match PKG_VERSION in Makefile' >&2; exit 1;
 }
 [[ "$RELEASE" =~ ^[0-9]+$ ]] || {
   echo 'PKG_RELEASE must be a non-negative integer' >&2; exit 1;

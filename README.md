@@ -65,10 +65,10 @@ make menuconfig
 make package/luci-app-honk/compile V=s
 ```
 
-GitHub Actions 的 **Release** 工作流仅发布 APK。输入与 Makefile 中 `PKG_VERSION` 一致的标签；发布说明从上次发布至今的完整 commit message 生成。应用版本独立于核心版本。
+GitHub Actions 的 **Release** 工作流仅发布 APK。版本取自输入标签（如 `v0.1.1`），修订号取自 Makefile 的 `PKG_RELEASE`，无需修改 Makefile 中的版本号。SDK 或固件源码构建可通过 `LUCI_HONK_VERSION` 指定版本。发布说明从上次发布至今的完整 commit message 生成。应用版本独立于核心版本。
 
 ```sh
-apk add --allow-untrusted /tmp/luci-app-honk-0.1.0-r1.apk
+apk add --allow-untrusted /tmp/luci-app-honk-0.1.1-r1.apk
 ```
 
 ## 语法检查
