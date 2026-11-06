@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${GH_REPO:?Set GH_REPO to owner/repository}"
 : "${BUILD_SHA:?Set BUILD_SHA to the commit being packaged}"
+: "${CORE_TAG:?Set CORE_TAG to the bundled honk tag}"
 : "${NOTES_FILE:?Set NOTES_FILE to the release description file}"
 
 RELEASES_FILE=$(mktemp)
@@ -31,7 +32,7 @@ APK_FILES=(dist/luci-app-honk-*.apk)
 }
 cat >> "$NOTES_FILE" <<EOF
 
-Bundled honk: https://github.com/daeuniverse/honk/releases/tag/$RELEASE_TAG
+Bundled honk: https://github.com/daeuniverse/honk/releases/tag/$CORE_TAG
 
 Choose the APK matching \`apk --print-arch\`:
 EOF

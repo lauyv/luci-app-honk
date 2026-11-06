@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-honk
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=MIT AND GPL-3.0-only
 
 # SDK builds use the version recorded with the prepared core as well.
