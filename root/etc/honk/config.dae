@@ -1,5 +1,5 @@
 global {
-  bootstrap_resolver: '119.29.29.29:53'
+  bootstrap_resolver: '223.5.5.5:53'
   check_interval: 300s
   check_tolerance: 10ms
   data_dir: '/etc/honk/data'
@@ -30,7 +30,7 @@ subscription {
 dns {
   optimistic_cache: true
   upstream {
-    localdns: 'udp://119.29.29.29' -> direct
+    localdns: 'udp://223.5.5.5' -> direct
     remotedns: 'udp://8.8.8.8' -> proxy
     encryptdns: 'tls://223.5.5.5' -> direct
   }
@@ -59,8 +59,8 @@ experimental {
     native_api {
         enabled: true
         listen: '0.0.0.0:9527'
-        secret: 'replace-with-your-random-token'
-        allow_anonymous_loopback: true
+        password_auth: true
+        config_write: true
         ui: 'embedded'
     }
     cache_file {
