@@ -9,13 +9,29 @@
 ## 使用
 
 1. 下载与设备 `apk --print-arch` 匹配的 APK，安装后重新登录 LuCI，进入 **服务 → honk**。首次安装不会启动服务或启用开机启动。
-2. 编辑 `/etc/honk/config.dae`，按实际环境设置接口、订阅、节点和路由。配置示例见 [config.dae](root/etc/honk/config.dae)。z
-3. 使用 Geo 规则时，首次启动前执行下方两条 curl 命令下载数据。
-4. 保存配置，然后打开 **运行服务**。**开机启动**单独设置。
+2. 编辑 `/etc/honk/config.dae`，按实际环境设置接口、订阅、节点和路由。配置示例见 [config.dae](root/etc/honk/config.dae)。
+3. 保存配置，然后打开 **运行服务**。**开机启动**单独设置。APK 已附带 Geo 数据，无需首次手动下载。
 
 服务运行时保存新配置会发送热重载请求，停止时保持停止；未修改配置不会触发重载。请求成功不代表核心已接受新配置，请查看系统日志确认。下载来源、数据目录等需要重启才能生效的设置，修改后需手动停止再启动服务。配置路径变化时，`/etc/init.d/honk reload` 由 procd 替换服务实例。编辑器仅管理主配置文件，上限为 64 KiB，不使用 `--store db`。
 
 核心路径为 `/usr/bin/honk-core`，在服务页显示版本；在线安装、更新和回退已移除。APK 升级会替换核心，并重启已启用开机启动的服务。首次安装和升级未启用开机启动的服务保持关闭。软件包与其他提供同名服务的 `honk` 包冲突，不能同时安装；运行中的 dae 也需先停止。
+
+## APK 文件布局
+
+下表路径均为安装到路由器后的绝对路径。
+
+| 目录或文件                   | 用途                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `/usr/bin/honk-core`         | 官方静态核心，内嵌 eBPF 程序和 doona 原生面板，无需另外安装核心或解压面板文件。                  |
+| `/etc/init.d/honk`           | procd 服务脚本，负责启动、停止、重载和开机启动管理，并检查内核、BTF、cgroup 环境。               |
+| `/etc/config/honk`           | UCI 配置，记录主配置文件路径等服务设置；作为配置文件登记。                                       |
+| `/etc/honk/config.dae`       | Honk 主配置，包含接口、订阅、节点组、DNS、路由和原生 API 设置；作为配置文件登记，权限为 `0600`。 |
+| `/etc/honk/data/geosite.dat` | 随包提供的域名规则数据，供 `geosite:` 规则使用。                                                 |
+| `/etc/honk/data/geoip.dat`   | 随包提供的 IP 规则数据，来自 `chnroutes.dat`，供 `geoip:` 规则使用。                             |
+
+APK 还包含安装、升级和卸载前的维护脚本，由包管理器执行，用于刷新 LuCI/RPC、管理服务以及在升级时重启已启用的服务。
+
+运行后生成的 `/etc/honk/data/state/`（包括 `honk.db`）和 `/tmp/honk-panel/` 不属于 APK 预置文件：前者保存核心运行状态，后者保存面板操作锁、任务状态及临时文件。
 
 ## Geo 数据
 
@@ -27,17 +43,9 @@ global {
 }
 ```
 
-Geo 文件保存为 `/etc/honk/data/geosite.dat` 和 `/etc/honk/data/geoip.dat`，状态数据库位于 `/etc/honk/data/state/honk.db`。核心按配置中的 `data_dir` 查找文件。自行修改 `data_dir` 时需同步调整下方下载路径。
+APK 内置构建时从 `lauyv/rdat` 的 `rel` 分支获取的 `geosite.dat` 和从 `lauyv/cnip` 的 `rel` 分支获取的 `chnroutes.dat`，分别安装到 `/etc/honk/data/geosite.dat` 和 `/etc/honk/data/geoip.dat`。构建流程只下载一次，同一次发布的所有架构使用同一份数据，并在打包前校验准备阶段记录的 SHA256。
 
-首次使用时，通过 SSH 在路由器上执行：
-
-```sh
-mkdir -p /etc/honk/data
-curl -fL --retry 3 -o /etc/honk/data/geosite.dat 'https://gh-proxy.com/https://github.com/lauyv/rdat/raw/rel/geosite.dat'
-curl -fL --retry 3 -o /etc/honk/data/geoip.dat 'https://gh-proxy.com/https://github.com/lauyv/cnip/raw/rel/chnroutes.dat'
-```
-
-确认两条命令均成功后再启动服务。仅设置 `assets.geodata` 下载来源不会补齐缺失文件；首次必须手动下载。
+状态数据库位于 `/etc/honk/data/state/honk.db`。核心按配置中的 `data_dir` 查找文件；自行修改 `data_dir` 时需将 Geo 文件复制到对应目录。APK 升级会替换随包提供的 Geo 文件。
 
 后续更新由 Honk 核心管理，示例配置已设置 `assets.geodata` 来源与直连下载路由。Native API 开启、状态数据库可用且允许配置写入并配置凭据时，核心默认每 24 小时检查已加载资源的更新，可通过原生面板调整设置或立即更新。启动不会立即下载；首次检查至少等待 5 分钟，再加最多 60 分钟随机延迟。
 
@@ -61,8 +69,9 @@ apk add --allow-untrusted /tmp/luci-app-honk-0.1.0_beta4-r1-x86_64.apk
 
 ```sh
 bash .github/scripts/prepare-core.sh v0.1.0-beta.4 x86_64-unknown-linux-musl build/core
+bash .github/scripts/prepare-geodata.sh build/geodata
 TOOLS_DIR="$PWD/build/tools" bash .github/scripts/prepare-tools.sh
-RELEASE_TAG=v0.1.0-beta.4 OPENWRT_ARCH=x86_64 HONK_CORE_DIR="$PWD/build/core" TOOLS_DIR="$PWD/build/tools" bash .github/scripts/build-apk.sh
+RELEASE_TAG=v0.1.0-beta.4 OPENWRT_ARCH=x86_64 HONK_CORE_DIR="$PWD/build/core" HONK_GEODATA_DIR="$PWD/build/geodata" TOOLS_DIR="$PWD/build/tools" bash .github/scripts/build-apk.sh
 ```
 
 准备工具会下载并编译固定版本的 APK Tools v3。准备好的核心目录还包含许可证、核心与界面源码归档；发布 APK 时需一并提供对应源码。
@@ -71,7 +80,7 @@ RELEASE_TAG=v0.1.0-beta.4 OPENWRT_ARCH=x86_64 HONK_CORE_DIR="$PWD/build/core" TO
 
 ```sh
 make menuconfig
-make package/luci-app-honk/compile HONK_CORE_DIR=/absolute/path/to/prepared/core V=s
+make package/luci-app-honk/compile HONK_CORE_DIR=/absolute/path/to/prepared/core HONK_GEODATA_DIR=/absolute/path/to/prepared/geodata V=s
 ```
 
 ARM64 使用 `aarch64-unknown-linux-musl`，核心目录必须与 SDK 的目标架构一致。构建时要求主机安装 Bash、jq、tar、readelf。实际安装和运行需在设备上验证。

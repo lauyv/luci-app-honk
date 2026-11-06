@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-honk
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=MIT AND GPL-3.0-only
 
 # SDK builds use the version recorded with the prepared core as well.
@@ -10,9 +10,8 @@ ifneq ($(HONK_CORE_DIR),)
 endif
 
 LUCI_TITLE:=honk 代理核心、配置与服务管理
-LUCI_DEPENDS:=+luci-base +rpcd +jshn +jsonfilter +curl +ca-bundle +flock \
-	+kmod-veth +kmod-sched-core +kmod-sched-bpf +kmod-nft-core +kmod-nft-queue \
-	+kmod-nfnetlink-queue +kmod-nf-conntrack
+LUCI_DEPENDS:=+luci-base +jshn +jsonfilter +flock \
+	+ca-bundle +kmod-veth +kmod-sched-core +kmod-sched-bpf +kmod-nft-queue
 LUCI_PKGARCH:=$(ARCH_PACKAGES)
 LUCI_DEPENDS+=@(aarch64||x86_64)
 
@@ -22,6 +21,10 @@ HONK_CORE_TARGET:=$(if $(CONFIG_aarch64),aarch64-unknown-linux-musl,x86_64-unkno
 define Build/Prepare/luci-app-honk
 	test -n "$(HONK_CORE_DIR)" || { echo 'Set HONK_CORE_DIR to the prepared official core directory (see README)'; exit 1; }
 	bash $(CURDIR)/.github/scripts/prepare-core.sh --verify "$(HONK_CORE_DIR)" "$(HONK_CORE_TARGET)"
+	test -n "$(HONK_GEODATA_DIR)" || { echo 'Set HONK_GEODATA_DIR to the prepared Geo data directory (see README)'; exit 1; }
+	bash $(CURDIR)/.github/scripts/prepare-geodata.sh --verify "$(HONK_GEODATA_DIR)"
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)/root/etc/honk/data
+	$(INSTALL_DATA) $(HONK_GEODATA_DIR)/geosite.dat $(HONK_GEODATA_DIR)/geoip.dat $(PKG_BUILD_DIR)/root/etc/honk/data/
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)/root/usr/bin $(PKG_BUILD_DIR)/root/usr/share/licenses/honk $(PKG_BUILD_DIR)/root/usr/share/honk
 	$(INSTALL_BIN) $(HONK_CORE_DIR)/honk-core $(PKG_BUILD_DIR)/root/usr/bin/honk-core
 	$(CP) $(HONK_CORE_DIR)/licenses/. $(PKG_BUILD_DIR)/root/usr/share/licenses/honk/

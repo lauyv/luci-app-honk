@@ -12,6 +12,7 @@ TOOLS_DIR=$(cd -- "$TOOLS_DIR" && pwd)
 [[ -x "$TOOLS_DIR/apk" ]] || { echo 'APK Tools v3 is missing' >&2; exit 1; }
 : "${OPENWRT_ARCH:?Set OPENWRT_ARCH, such as x86_64 or aarch64_cortex-a53}"
 : "${HONK_CORE_DIR:?Set HONK_CORE_DIR to a directory produced by prepare-core.sh}"
+: "${HONK_GEODATA_DIR:?Set HONK_GEODATA_DIR to a directory produced by prepare-geodata.sh}"
 case "$OPENWRT_ARCH" in
   x86_64) CORE_TARGET=x86_64-unknown-linux-musl;;
   aarch64_generic|aarch64_cortex-a53|aarch64_cortex-a72|aarch64_cortex-a76)
@@ -21,7 +22,10 @@ esac
 HONK_CORE_DIR=$(cd "$HONK_CORE_DIR" && pwd)
 bash "$SOURCE_DIR/.github/scripts/prepare-core.sh" --verify "$HONK_CORE_DIR" "$CORE_TARGET"
 [[ "$(jq -er '.tag' "$HONK_CORE_DIR/core.json")" == "$RELEASE_TAG" ]] || { echo 'Package tag must match the bundled core' >&2; exit 1; }
+bash "$SOURCE_DIR/.github/scripts/prepare-geodata.sh" --verify "$HONK_GEODATA_DIR"
 prepare_payload
+mkdir -p "$DATA/etc/honk/data"
+install -m 0644 "$HONK_GEODATA_DIR/geosite.dat" "$HONK_GEODATA_DIR/geoip.dat" "$DATA/etc/honk/data/"
 mkdir -p "$DATA/usr/bin" "$DATA/usr/share/licenses/honk" "$DATA/usr/share/honk"
 install -m 0755 "$HONK_CORE_DIR/honk-core" "$DATA/usr/bin/honk-core"
 cp -R "$HONK_CORE_DIR/licenses/." "$DATA/usr/share/licenses/honk/"
