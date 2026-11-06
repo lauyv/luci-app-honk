@@ -3,6 +3,7 @@
 'require rpc';
 'require poll';
 'require ui';
+'require form';
 
 const MAX_SIZE = 65536;
 
@@ -76,13 +77,6 @@ function checked(result) {
   return result;
 }
 
-function field(title, node) {
-  return E('div', { class: 'cbi-value' }, [
-    E('div', { class: 'cbi-value-title' }, title),
-    E('div', { class: 'cbi-value-field' }, node),
-  ]);
-}
-
 return view.extend({
   handleSaveApply: null,
   handleSave: null,
@@ -95,7 +89,7 @@ return view.extend({
   notify(text, error, details) {
     if (this.notification) this.notification.remove();
     const content = E('div', {}, [E('p', {}, text)]);
-    if (details) content.appendChild(E('pre', { class: 'honk-output' }, details));
+    if (details) content.appendChild(new ui.Textarea(details, { readonly: true, rows: 8, monospace: true }).render());
     this.notification = error
       ? ui.addNotification(null, content, 'error')
       : ui.addTimeLimitedNotification(null, content, 4500, 'info');
@@ -127,21 +121,9 @@ return view.extend({
         this.notify(error.message, true);
       }
       this.updateControls();
+      // Native button handlers restore disabled state after this promise settles.
+      setTimeout(() => this.updateControls(), 0);
     }
-  },
-
-  button(label, fn, style, write = true, config = false) {
-    const node = E(
-      'button',
-      {
-        type: 'button',
-        class: 'cbi-button cbi-button-' + (style || 'action'),
-        click: () => this.run(fn, write),
-      },
-      label,
-    );
-    this.buttons.push({ node, write, config });
-    return node;
   },
 
   updateDirty() {
@@ -245,29 +227,72 @@ return view.extend({
     }
   },
 
-  render(data) {
+  async render(data) {
     this.writable = L.hasViewPermission() === true;
     this.status = data[0];
-    this.buttons = [];
     this.loaded = false;
     this.localBusy = false;
-    this.runtime = E('strong');
-    this.version = E('span');
-    this.environment = E('span');
-    this.path = E('code');
-    this.problem = E('p', { class: 'cbi-section-descr', role: 'alert', hidden: true });
+    this.problem = E('p', { role: 'alert', hidden: true });
     this.progress = E('p', { role: 'status', 'aria-live': 'polite' });
-    this.dirty = E('div', { class: 'cbi-section-descr', 'aria-live': 'polite' });
-    this.editor = E('textarea', {
-      class: 'cbi-input-textarea',
-      rows: 24,
-      spellcheck: 'false',
-      'aria-label': 'honk .dae 配置',
-      input: () => this.updateDirty(),
-    });
-    const checkbox = new ui.Checkbox('0', { id: 'honk-autostart' }).render();
-    this.boot = checkbox.querySelector('input[type="checkbox"]');
-    this.boot.setAttribute('aria-label', '开机启动');
+
+    const map = new form.JSONMap({ honk: {} }, 'honk',
+      this.writable ? '配置与服务管理' : '当前账号仅有查看权限。');
+    map.readonly = !this.writable;
+    const section = map.section(form.NamedSection, 'honk', 'honk');
+    section.tab('overview', '服务');
+    section.tab('config', '配置', '保存后向运行中的服务发送重载请求，已停止的服务保持停止。重载结果请查看日志；部分设置需手动重启服务。');
+    section.tab('logs', '系统日志');
+
+    const runtime = section.taboption('overview', form.DummyValue, 'runtime', '运行状态');
+    const boot = section.taboption('overview', form.Flag, 'autostart', '开机启动');
+    const running = section.taboption('overview', form.Flag, 'running', '运行服务');
+    const version = section.taboption('overview', form.DummyValue, 'version', '核心版本');
+    const environment = section.taboption('overview', form.DummyValue, 'environment', '运行环境');
+    const path = section.taboption('overview', form.DummyValue, 'path', '配置文件');
+
+    const dirty = section.taboption('config', form.DummyValue, 'dirty', '配置状态');
+    const editor = section.taboption('config', form.TextValue, 'content', '配置内容');
+    editor.rows = 24;
+    editor.monospace = true;
+    const reload = section.taboption('config', form.Button, 'reload', '重新读取文件');
+    reload.inputtitle = '重新读取';
+    reload.inputstyle = 'reset';
+    reload.readonly = false;
+    reload.onclick = () => this.run(async () => {
+      if (this.loaded && this.editor.value !== this.savedText && !window.confirm('放弃未保存的修改并重新读取配置？')) return;
+      this.setConfig(await api.read());
+    }, false);
+    const save = section.taboption('config', form.Button, 'save', '保存配置');
+    save.inputtitle = '保存';
+    save.inputstyle = 'apply';
+    save.onclick = () => this.run(() => this.save(), true);
+
+    const logHint = section.taboption('logs', form.DummyValue, 'log_status', '日志状态');
+    const logUpdated = section.taboption('logs', form.DummyValue, 'log_updated', '更新时间');
+    const logs = section.taboption('logs', form.TextValue, 'log_content', '系统日志');
+    logs.rows = 20;
+    logs.monospace = true;
+    logs.readonly = true;
+
+    const root = await map.render();
+    const fieldNode = (option, selector) => map.findElement('data-field', option.cbid('honk')).querySelector(selector);
+    this.runtime = fieldNode(runtime, 'output');
+    this.boot = fieldNode(boot, 'input[type="checkbox"]');
+    this.running = fieldNode(running, 'input[type="checkbox"]');
+    this.version = fieldNode(version, 'output');
+    this.environment = fieldNode(environment, 'output');
+    this.path = fieldNode(path, 'output');
+    this.dirty = fieldNode(dirty, 'output');
+    this.editor = fieldNode(editor, 'textarea');
+    this.editor.spellcheck = false;
+    this.logHint = fieldNode(logHint, 'output');
+    this.logUpdated = fieldNode(logUpdated, 'output');
+    this.logs = fieldNode(logs, 'textarea');
+    this.buttons = [
+      { node: fieldNode(reload, 'button'), write: false },
+      { node: fieldNode(save, 'button'), write: true, config: true },
+    ];
+    this.editor.addEventListener('input', () => this.updateDirty());
     this.boot.addEventListener('change', () => {
       const enabled = this.boot.checked;
       this.run(async () => {
@@ -275,69 +300,22 @@ return view.extend({
         this.notify(messages.autostart_updated);
       }, true);
     });
-    const runningCheckbox = new ui.Checkbox('0', { id: 'honk-running' }).render();
-    this.running = runningCheckbox.querySelector('input[type="checkbox"]');
-    this.running.setAttribute('aria-label', '运行服务');
     this.running.addEventListener('change', () => {
       const enabled = this.running.checked;
       this.run(() => this.queue(enabled ? 'start' : 'stop'), true);
     });
-    const overview = E('div', { 'data-tab': 'overview', 'data-tab-title': '服务' }, [
-      field('运行状态', this.runtime),
-      field('开机启动', checkbox),
-      field('运行服务', runningCheckbox),
-      field('核心版本', this.version),
-      field('运行环境', this.environment),
-      field('配置文件', this.path),
-    ]);
-    const config = E('div', { 'data-tab': 'config', 'data-tab-title': '配置' }, [
-      this.dirty,
-      this.editor,
-      E('p', { class: 'cbi-section-descr' }, '保存后向运行中的服务发送重载请求，已停止的服务保持停止。重载结果请查看日志；部分设置需手动重启服务。'),
-      E('div', { class: 'cbi-page-actions honk-actions' }, [
-        this.button(
-          '重载配置',
-          async () => {
-            if (this.loaded && this.editor.value !== this.savedText && !window.confirm('放弃未保存的修改并重载配置？'))
-              return;
-            this.setConfig(await api.read());
-          },
-          'reset',
-          false,
-        ),
-        this.button('保存', () => this.save(), 'apply', true, true),
-      ]),
-    ]);
-    this.logHint = E('div', { class: 'cbi-section-descr', role: 'status' });
-    this.logUpdated = E('div', { class: 'cbi-section-descr' });
-    this.logs = E('textarea', {
-      class: 'cbi-input-textarea',
-      rows: 20,
-      readonly: '',
-      'aria-label': 'honk 系统日志',
-    });
-    const logs = E('div', { 'data-tab': 'logs', 'data-tab-title': '系统日志' }, [
-      this.logHint,
-      this.logUpdated,
-      this.logs,
-    ]);
-    logs.addEventListener('cbi-tab-active', () => this.refreshLogs());
-    const panes = E('div', {}, [overview, config, logs]);
-    const root = E('div', { class: 'cbi-map', id: 'honk-panel' }, [
-      E('link', { rel: 'stylesheet', href: L.resource('view/honk/panel.css') }),
-      E('h2', {}, 'honk'),
-      E('p', { class: 'cbi-map-descr' }, this.writable ? '配置与服务管理' : '当前账号仅有查看权限。'),
-      this.problem,
-      this.progress,
-      E('div', { class: 'cbi-section' }, [panes]),
-    ]);
-    ui.tabs.initTabGroup(panes.childNodes);
+
+    const logsPane = root.querySelector('[data-tab="logs"]');
+    logsPane.addEventListener('cbi-tab-active', () => this.refreshLogs());
+    const sectionNode = root.querySelector('.cbi-section');
+    root.insertBefore(this.problem, sectionNode);
+    root.insertBefore(this.progress, sectionNode);
     try {
       this.setConfig(data[1]);
     } catch (error) {
       this.notify(error.message, true);
     }
-    // 已完成的成功任务不在重新进入页面时重复提示。
+    // Do not repeat a completed success notification when reopening the page.
     try {
       if (this.status.job && JSON.parse(this.status.job).state === 'success') this.lastJob = this.status.job;
     } catch {
@@ -351,7 +329,7 @@ return view.extend({
         this.problem.textContent = '状态刷新失败：' + error.message;
         this.problem.hidden = false;
       }
-      if (logs.getAttribute('data-tab-active') === 'true') await this.refreshLogs();
+      if (logsPane.getAttribute('data-tab-active') === 'true') await this.refreshLogs();
     }, 5);
     return root;
   },

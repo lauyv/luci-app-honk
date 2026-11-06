@@ -2,6 +2,8 @@
 
 适用于 OpenWrt / ImmortalWrt 25.12，包含 Honk 代理核心以及服务、配置、系统日志 LuCI 页面。
 
+界面使用 LuCI 原生表单、页签和控件，布局与样式由当前主题提供，不包含独立 CSS 或额外的前端框架。Honk 配置文件和服务操作通过 RPC 处理。
+
 软件包内置 [honk 官方 Release](https://github.com/daeuniverse/honk/releases) 的静态 musl full 核心，包括 eBPF 和 doona 界面，核心随 APK 升级。运行需要 root、Linux 6.12+、内核 BTF 和 cgroup v2；依赖见 [Makefile](Makefile)。内核未自带 BTF 时，需另行准备与内核匹配的 BTF 文件。
 
 ## 使用
