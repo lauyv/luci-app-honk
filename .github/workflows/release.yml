@@ -2,7 +2,8 @@ name: Release
 run-name: Package latest upstream honk
 on:
   schedule:
-    - cron: '17 1 * * *'
+    - cron: "0 3 * * *"
+      timezone: "Asia/Shanghai"
   workflow_dispatch:
 permissions:
   contents: write
@@ -37,7 +38,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.upstream.outputs.publish == 'true'
         with:
-          node-version: '24'
+          node-version: "24"
       - name: Check syntax
         if: steps.upstream.outputs.publish == 'true'
         env:
